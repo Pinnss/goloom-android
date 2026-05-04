@@ -100,7 +100,7 @@ fun AboutScreen(onBack: () -> Unit) {
                 text = stringResource(R.string.about_open_sdk),
                 onClick = {
                     context.startActivity(Intent(Intent.ACTION_VIEW).apply {
-                        data = Uri.parse("https://github.com/Sv9toslavPinigin/goloom-poc")
+                        data = Uri.parse("https://github.com/Pinnss/goloom-poc")
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     })
                 },

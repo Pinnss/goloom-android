@@ -3,7 +3,7 @@
 # Запускать из корня goloom-android.
 #
 # По шагам:
-#   1) ../goloom-poc/mobile/scripts/build-android.sh -> goloom.aar
+#   1) ../goloom-server-public/mobile/scripts/build-android.sh -> goloom.aar
 #   2) cp .aar -> app/libs/
 #   3) ./gradlew assembleDebug
 #   4) cp APK -> goloom-v$VERSION.apk в корень
@@ -17,11 +17,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ANDROID_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Где лежит SDK (sibling-папка по умолчанию).
-SDK_REPO="${GOLOOM_POC_REPO:-${ANDROID_ROOT}/../goloom-poc}"
+SDK_REPO="${GOLOOM_SERVER_REPO:-${ANDROID_ROOT}/../goloom-server-public}"
 
 if [[ ! -d "${SDK_REPO}" ]]; then
-    echo "ERROR: goloom-poc не найден по пути ${SDK_REPO}"
-    echo "       Либо положи рядом, либо задай: GOLOOM_POC_REPO=/path/to/goloom-poc"
+    echo "ERROR: goloom-server-public не найден по пути ${SDK_REPO}"
+    echo "       Либо положи рядом, либо задай: GOLOOM_SERVER_REPO=/path/to/goloom-server"
     exit 1
 fi
 

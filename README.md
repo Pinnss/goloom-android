@@ -12,10 +12,10 @@ Android client for the **Goloom** VPN protocol — tunnels traffic inside a Tele
 
 ### Quick start
 
-The project depends on a `goloom.aar` produced by the [Sv9toslavPinigin/goloom-server](https://github.com/Sv9toslavPinigin/goloom-server) gomobile bridge. Build it once:
+The project depends on a `goloom.aar` produced by the [Pinnss/goloom-server](https://github.com/Pinnss/goloom-server) gomobile bridge. Build it once:
 
 ```bash
-git clone https://github.com/Sv9toslavPinigin/goloom-server.git
+git clone https://github.com/Pinnss/goloom-server.git
 cd goloom-server
 export ANDROID_NDK_HOME=$HOME/Android/Sdk/ndk/26.1.10909125
 ./mobile/scripts/build-android.sh

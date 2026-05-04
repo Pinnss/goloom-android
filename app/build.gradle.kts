@@ -43,7 +43,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Buildconfig поля для UpdateChecker и About-экрана
-        buildConfigField("String", "GITHUB_REPO", "\"Sv9toslavPinigin/goloom-android\"")
+        buildConfigField("String", "GITHUB_REPO", "\"Pinnss/goloom-android\"")
     }
 
     buildFeatures {
