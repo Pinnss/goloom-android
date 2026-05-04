@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.VpnService
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -149,6 +150,27 @@ private fun AppRoot(
             )
         }
     }
+
+    // Системная кнопка "Назад" должна повторять навигацию из top-bar'а:
+    // Settings → Main, Logs → Settings и т.д. Иначе на любом экране
+    // back закрывает приложение, что для староверов с 3-button nav особенно
+    // раздражает. Маппинг должен совпадать с `onBack` лямбдами в when-блоке
+    // ниже — чтобы был один источник истины. Если screen=Main, отдаём
+    // управление системе (она закроет app штатно).
+    val goBack: (() -> Unit)? = when (val s = screen) {
+        Screen.Main -> null
+        Screen.Profiles -> { -> screen = Screen.Main }
+        is Screen.ProfileDetails -> { -> screen = Screen.Profiles }
+        is Screen.ProfileEdit -> { -> screen = Screen.ProfileDetails(s.profileId) }
+        Screen.ImportSheet -> { -> screen = Screen.Main }
+        Screen.Settings -> { -> screen = Screen.Main }
+        Screen.Logs -> { -> screen = Screen.Settings }
+        Screen.Parameters -> { -> screen = Screen.Settings }
+        Screen.Updates -> { -> screen = Screen.Settings }
+        Screen.About -> { -> screen = Screen.Settings }
+        Screen.AppRouting -> { -> screen = Screen.Settings }
+    }
+    BackHandler(enabled = goBack != null) { goBack?.invoke() }
 
     Box(modifier = Modifier.fillMaxSize().background(G.bg)) {
         when (val s = screen) {
