@@ -14,8 +14,9 @@ captures/
 # Native artifacts
 app/libs/goloom.aar
 
-# Build outputs
-*.apk
+# Build outputs (gradle intermediate). Финальные APK-релизы коммитим
+# в корне репо как goloom-v*.apk — это распространяемый артефакт.
+app/build/outputs/**/*.apk
 *.aab
 *.ap_
 *.dex

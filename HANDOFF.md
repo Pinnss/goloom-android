@@ -240,17 +240,33 @@ keyPassword=…
 
 Если файла нет (CI без секретов / свежий checkout) — `release` build падает на `debug.keystore`. APK работает, но **подпись разная между сборками** → atomic update через `pm install -r` будет ломаться. Для production обязательно положить `keystore.properties` (или передать через CI secrets и записать в файл перед `gradlew assembleRelease`).
 
-## CI workflow
+## Релизный флоу (без CI)
 
-`.github/workflows/build.yml`:
-- Триггеры: push в `main`, теги `v*`, PR в `main`, ручной dispatch
-- Чекаутит **этот repo + `Sv9toslavPinigin/goloom-poc`** (нужен для сборки `.aar`)
-- Ставит Go, NDK, gomobile
-- Собирает `goloom.aar` через `mobile/scripts/build-android.sh`
-- Кладёт в `app/libs/`, гоняет тесты, собирает APK
-- При теге `v*` создаёт GitHub Release с APK как asset
+Сборку и публикацию делаем руками — скрипт `scripts/release.sh`:
 
-Если `goloom-poc` приватный — в Settings → Secrets добавить `GOLOOM_POC_TOKEN` (PAT с `repo:read`), workflow его подхватит.
+```bash
+export ANDROID_NDK_HOME=$HOME/android-sdk/ndk/26.1.10909125
+cd ~/IdeaProjects/goloom-android
+./scripts/release.sh
+# → собирает .aar из goloom-poc (сосед), кладёт в app/libs/,
+#   собирает APK, кладёт в корень как goloom-v$VERSION.apk
+# → печатает шпаргалку для git tag + gh release create
+```
+
+Скрипт ждёт `goloom-poc` в sibling-папке (`../goloom-poc`); если он у тебя в другом месте — `GOLOOM_POC_REPO=/path` перед запуском.
+
+После успешной сборки коммитим APK прямо в репо и создаём GitHub Release:
+```bash
+git add goloom-v0.2.0.apk
+git commit -m "release v0.2.0"
+git tag v0.2.0
+git push --follow-tags
+gh release create v0.2.0 goloom-v0.2.0.apk --generate-notes
+```
+
+Файлы `goloom-v*.apk` в корне репо коммитятся специально — это распространяемый артефакт (как в проекте-референсе `tun`). UpdateChecker читает `releases/latest`, поэтому APK в Release-asset обязателен.
+
+CI намеренно не настроен — сборка APK тяжёлая (NDK ~1ГБ, gomobile bind ~5мин), и приватный `goloom-poc` усложнял бы workflow секретами. Если когда-нибудь захотим автомат — README в `scripts/release.sh` уже описывает шаги, легко завернуть в GitHub Actions.
 
 ## Что НЕ сделано / открытые вопросы
 
