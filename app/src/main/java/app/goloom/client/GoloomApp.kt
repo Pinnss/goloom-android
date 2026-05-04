@@ -6,6 +6,7 @@ import androidx.core.os.LocaleListCompat
 import app.goloom.client.data.LogSource
 import app.goloom.client.data.LogStore
 import app.goloom.client.data.SettingsManager
+import app.goloom.client.util.NetworkMonitor
 
 /**
  * Application-class. Делает три вещи:
@@ -27,6 +28,11 @@ class GoloomApp : Application() {
             LogSource.APP,
             "App start · v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
         )
+
+        // Глобальный NetworkMonitor — нужен сервису для авто-реконнекта при
+        // смене WiFi↔mobile. Регистрируем здесь, в Application.onCreate,
+        // чтобы callback не пропадал при перезапусках сервиса.
+        NetworkMonitor.get(this).start()
     }
 
     private fun applyLanguage(lang: SettingsManager.Language) {

@@ -25,12 +25,16 @@ import app.goloom.client.data.TunnelStats
 import app.goloom.client.data.applyAppRouting
 import android.os.ParcelFileDescriptor
 import com.wireguard.config.Config
+import app.goloom.client.util.NetworkMonitor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -69,6 +73,13 @@ class GoloomVpnService : VpnService() {
     private var tunFd: ParcelFileDescriptor? = null
     private var startedAt: Long = 0L
 
+    /**
+     * Профиль, с которым последний раз стартовали — нужен для
+     * авто-реконнекта при смене сети. Обнуляется при Disconnect.
+     */
+    private var activeProfileId: String? = null
+    private var networkObserverJob: Job? = null
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_CONNECT -> {
@@ -78,17 +89,67 @@ class GoloomVpnService : VpnService() {
                     stopSelf(); return START_NOT_STICKY
                 }
                 startForegroundNotification()
-                connectJob = scope.launch { connect(profileId) }
+                activeProfileId = profileId
+                ensureNetworkObserver()
+                // Если уже идёт сессия (например, рестарт из-за смены сети) —
+                // teardown сначала, потом новый connect.
+                connectJob?.cancel()
+                connectJob = scope.launch {
+                    if (goloomClient != null || tunFd != null) {
+                        teardown()
+                    }
+                    connect(profileId)
+                }
             }
             ACTION_DISCONNECT -> {
+                activeProfileId = null
+                networkObserverJob?.cancel(); networkObserverJob = null
                 scope.launch {
                     teardown()
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelf()
                 }
             }
+            ACTION_RECONNECT -> {
+                val pid = activeProfileId ?: run {
+                    LogStore.get(this).warn(LogSource.APP, "RECONNECT without active profile — ignoring")
+                    return START_STICKY
+                }
+                LogStore.get(this).info(LogSource.APP, "Network changed — reconnecting profile $pid")
+                connectJob?.cancel()
+                connectJob = scope.launch {
+                    teardown()
+                    connect(pid)
+                }
+            }
         }
         return START_STICKY
+    }
+
+    /**
+     * Подписывается на смену default-network и при событии шлёт сам
+     * себе ACTION_RECONNECT, если активна сессия и юзер не отключил
+     * autoReconnect в настройках. Debounce 1 сек гасит burst при handover.
+     */
+    private fun ensureNetworkObserver() {
+        if (networkObserverJob != null) return
+        networkObserverJob = NetworkMonitor.get(this).networkChange
+            .debounce(1_000)
+            .onEach {
+                if (activeProfileId == null) return@onEach
+                if (!SettingsManager.get(this).autoReconnect.value) {
+                    LogStore.get(this).info(
+                        LogSource.APP,
+                        "Network changed but autoReconnect=off — staying as-is",
+                    )
+                    return@onEach
+                }
+                val intent = Intent(this, GoloomVpnService::class.java).apply {
+                    action = ACTION_RECONNECT
+                }
+                startService(intent)
+            }
+            .launchIn(scope)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -358,6 +419,7 @@ class GoloomVpnService : VpnService() {
     companion object {
         const val ACTION_CONNECT = "app.goloom.client.action.CONNECT"
         const val ACTION_DISCONNECT = "app.goloom.client.action.DISCONNECT"
+        const val ACTION_RECONNECT = "app.goloom.client.action.RECONNECT"
         const val EXTRA_PROFILE_ID = "profile_id"
 
         // Локальный UDP-listener Goloom-relay. WG.endpoint в connstr указывает
