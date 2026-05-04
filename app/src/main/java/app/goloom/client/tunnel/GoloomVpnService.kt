@@ -271,8 +271,16 @@ class GoloomVpnService : VpnService() {
             val builder = Builder()
                 .setSession(getString(R.string.app_name))
                 .setMtu(settings.mtu.value)
+                // IPv4 default-route, разделённый /1+/1 — стандартный паттерн
+                // VPN, не ломает собственный underlying default route.
                 .addRoute("0.0.0.0", 1)
                 .addRoute("128.0.0.0", 1)
+                // IPv6 default-route в наш TUN. Голум-сервер сейчас только
+                // IPv4, поэтому IPv6-пакеты из приложений будут drop'нуты
+                // в wg-userspace (нет AllowedIPs для них). Без этой строки
+                // Chrome/etc отправляют через IPv6 в обход TUN — пользователь
+                // видит свой реальный IPv6-адрес на сайтах-проверялках.
+                .addRoute("::", 0)
 
             wgConfig.`interface`.addresses.forEach { addr ->
                 builder.addAddress(addr.address, addr.mask)
