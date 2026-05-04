@@ -1,0 +1,37 @@
+# Gradle
+.gradle/
+build/
+local.properties
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+*.ipr
+*.iws
+captures/
+.cxx/
+
+# Native artifacts
+app/libs/goloom.aar
+
+# Build outputs
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Kotlin
+.kotlin/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Keystores (никогда не коммитим)
+*.keystore
+*.jks
+keystore.properties
+release.jks

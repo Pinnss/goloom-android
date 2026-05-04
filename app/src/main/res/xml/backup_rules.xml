@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Профили и настройки исключаем из бэкапа — содержат WG-приватники.
+         allowBackup=false в манифесте дополнительно отключает облачный бэкап. -->
+    <exclude domain="sharedpref" path="goloom_profiles.xml" />
+    <exclude domain="sharedpref" path="goloom_settings.xml" />
+</full-backup-content>
