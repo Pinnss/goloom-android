@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Goloom</string>
+
+    <!-- Main screen -->
+    <string name="main_status_off">Не подключено</string>
+    <string name="main_status_connecting">Подключение…</string>
+    <string name="main_status_on">Подключено</string>
+    <string name="main_status_error">Ошибка подключения</string>
+    <string name="main_sub_off">Нажми, чтобы подключиться</string>
+    <string name="main_sub_connecting">Связываюсь с узлом</string>
+    <string name="main_sub_on">Туннель установлен</string>
+    <string name="main_kicker_status">СТАТУС</string>
+    <string name="main_kicker_connected">ПОДКЛЮЧЕНО</string>
+    <string name="main_no_profiles">Профилей пока нет — нажми + для импорта</string>
+    <string name="main_exit_ip">Внешний IP</string>
+    <string name="main_exit_ip_masked">— скрыт —</string>
+    <string name="main_profile_label">Профиль</string>
+
+    <!-- Profiles -->
+    <string name="profiles_title">Профили</string>
+    <string name="profile_title">Профиль</string>
+    <string name="profile_section_config">Конфигурация</string>
+    <string name="profile_section_export">Экспорт</string>
+    <string name="profile_endpoint">Endpoint</string>
+    <string name="profile_protocol">Протокол</string>
+    <string name="profile_mtu">MTU</string>
+    <string name="profile_allowed_ips">Allowed IPs</string>
+    <string name="profile_export_qr">QR-код</string>
+    <string name="profile_export_copy">Скопировать ссылку</string>
+    <string name="profile_export_share">Поделиться .conf-файлом</string>
+    <string name="profile_delete">Удалить профиль</string>
+    <string name="profile_delete_confirm">Удалить «%1$s»? Действие нельзя отменить.</string>
+    <string name="profile_import_button">Импортировать профиль</string>
+    <string name="profiles_manage_button">Управление профилями</string>
+
+    <!-- Profile edit -->
+    <string name="profile_edit_title">Редактирование профиля</string>
+    <string name="profile_edit_section_profile">Профиль</string>
+    <string name="profile_edit_section_connstr">Строка подключения</string>
+    <string name="profile_edit_name">Имя</string>
+    <string name="profile_edit_connstr_placeholder">goloom://…</string>
+
+    <!-- Import -->
+    <string name="import_title">Импорт профиля</string>
+    <string name="import_qr_hint">Наведи камеру на QR-код</string>
+    <string name="import_or">Или</string>
+    <string name="import_paste">Вставить из буфера обмена</string>
+    <string name="import_invalid">Неправильная ссылка Goloom</string>
+    <string name="import_no_camera">Камера недоступна — вставь ссылку</string>
+    <string name="import_camera_permission">Для сканирования QR нужен доступ к камере</string>
+    <string name="import_clipboard_empty">Буфер обмена пуст</string>
+    <string name="import_success">Импортирован «%1$s»</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Настройки</string>
+    <string name="settings_section_general">Общее</string>
+    <string name="settings_section_behavior">Поведение</string>
+    <string name="settings_section_about">О приложении</string>
+    <string name="settings_parameters">Параметры</string>
+    <string name="settings_parameters_detail">Протокол, MTU, DNS</string>
+    <string name="settings_logs">Логи</string>
+    <string name="settings_logs_detail">Активные и архив</string>
+    <string name="settings_network">Сеть</string>
+    <string name="settings_network_detail">Раздельное туннелирование</string>
+    <string name="settings_connect_on_launch">Подключаться при запуске</string>
+    <string name="settings_reconnect">Автоматически переподключаться</string>
+    <string name="settings_block_ipv6">Блокировать утечку IPv6</string>
+    <string name="settings_language">Язык</string>
+    <string name="settings_language_en">English</string>
+    <string name="settings_language_ru">Русский</string>
+    <string name="settings_language_system">Системный</string>
+    <string name="settings_about_app">О Goloom</string>
+    <string name="settings_check_updates">Проверить обновления</string>
+    <string name="settings_version_current">v%1$s · текущая</string>
+    <string name="settings_version_footer">goloom · v%1$s</string>
+    <string name="settings_check_updates_inline">проверить обновления</string>
+
+    <!-- Logs -->
+    <string name="logs_title">Логи</string>
+    <string name="logs_filter_all">Все</string>
+    <string name="logs_filter_info">Info</string>
+    <string name="logs_filter_warn">Warn</string>
+    <string name="logs_filter_debug">Debug</string>
+    <string name="logs_filter_error">Error</string>
+    <string name="logs_share">Поделиться</string>
+    <string name="logs_clear">Очистить</string>
+    <string name="logs_empty">Логов пока нет</string>
+    <string name="logs_empty_filtered">Совпадений нет</string>
+    <string name="logs_clear_confirm">Очистить все логи?</string>
+    <string name="logs_count">Логи (%1$d/%2$d)</string>
+
+    <!-- Parameters -->
+    <string name="params_title">Параметры</string>
+    <string name="params_section_protocol">Протокол</string>
+    <string name="params_section_tunnel">Туннель</string>
+    <string name="params_section_dns">DNS</string>
+    <string name="params_section_advanced">Дополнительно</string>
+    <string name="params_protocol_v2">Goloom v2</string>
+    <string name="params_protocol_v2_detail">По умолчанию — рекомендуется</string>
+    <string name="params_mtu">MTU</string>
+    <string name="params_keepalive">Keepalive</string>
+    <string name="params_persistent">Постоянное соединение</string>
+    <string name="params_dns_mode">Режим DNS</string>
+    <string name="params_block_trackers">Блокировать трекеры</string>
+    <string name="params_diagnostics">Диагностика</string>
+
+    <!-- Updates -->
+    <string name="updates_title">Обновление</string>
+    <string name="updates_new_version">Новая версия</string>
+    <string name="updates_current">Текущая</string>
+    <string name="updates_whats_new">Что нового</string>
+    <string name="updates_install">Установить обновление</string>
+    <string name="updates_remind_later">Напомнить позже</string>
+    <string name="updates_up_to_date">Актуальная версия</string>
+    <string name="updates_checking">Проверка…</string>
+    <string name="updates_check_failed">Не удалось проверить</string>
+    <string name="updates_downloading">Загрузка… %1$d%%</string>
+    <string name="updates_download_failed">Ошибка загрузки: %1$s</string>
+    <string name="updates_open_installer">Открыть установщик</string>
+    <string name="updates_no_download_url">К релизу не приложен APK</string>
+    <string name="updates_banner_title">Доступна версия %1$s</string>
+    <string name="updates_banner_sub">Нажми, чтобы установить</string>
+    <string name="updates_banner_action">Обновить</string>
+
+    <!-- About -->
+    <string name="about_title">О приложении</string>
+    <string name="about_subtitle">VPN-туннель поверх Telemost</string>
+    <string name="about_open_github">Открыть на GitHub</string>
+    <string name="about_open_sdk">Сервер и SDK</string>
+
+    <!-- App routing -->
+    <string name="approuting_title">По приложениям</string>
+    <string name="approuting_mode_off">Все приложения через VPN</string>
+    <string name="approuting_mode_whitelist">Только выбранные через VPN</string>
+    <string name="approuting_mode_blacklist">Выбранные мимо VPN</string>
+    <string name="approuting_search">Поиск приложений…</string>
+    <string name="approuting_section_user">Пользовательские</string>
+    <string name="approuting_section_system">Системные</string>
+    <string name="approuting_show_system">Показать системные</string>
+
+    <!-- Common -->
+    <string name="action_cancel">Отмена</string>
+    <string name="action_delete">Удалить</string>
+    <string name="action_save">Сохранить</string>
+    <string name="action_done">Готово</string>
+    <string name="action_retry">Повторить</string>
+    <string name="action_back">Назад</string>
+
+    <!-- Connect button -->
+    <string name="cd_connect">Подключить</string>
+    <string name="cd_disconnect">Отключить</string>
+
+    <!-- Foreground notification -->
+    <string name="notif_channel_name">Статус VPN</string>
+    <string name="notif_channel_desc">Постоянное уведомление о состоянии VPN</string>
+    <string name="notif_running">Goloom is running</string>
+    <string name="notif_running_sub">%1$s · %2$s</string>
+    <string name="notif_action_disconnect">Отключить</string>
+
+    <!-- Errors -->
+    <string name="error_no_aar">Не подключён Goloom SDK — пересобери app/libs/goloom.aar</string>
+    <string name="error_vpn_denied">Доступ к VPN запрещён</string>
+    <string name="error_no_profile">Сначала выбери профиль</string>
+</resources>
