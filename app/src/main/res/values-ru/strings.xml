@@ -115,6 +115,10 @@
     <string name="updates_up_to_date">Актуальная версия</string>
     <string name="updates_checking">Проверка…</string>
     <string name="updates_check_failed">Не удалось проверить</string>
+    <string name="updates_downloading">Загрузка… %1$d%%</string>
+    <string name="updates_download_failed">Ошибка загрузки: %1$s</string>
+    <string name="updates_open_installer">Открыть установщик</string>
+    <string name="updates_no_download_url">К релизу не приложен APK</string>
     <string name="updates_banner_title">Доступна версия %1$s</string>
     <string name="updates_banner_sub">Нажми, чтобы установить</string>
     <string name="updates_banner_action">Обновить</string>

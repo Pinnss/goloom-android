@@ -1,7 +1,5 @@
 package app.goloom.client.screens
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -21,12 +19,14 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,14 +48,19 @@ import app.goloom.client.design.GIconBtn
 import app.goloom.client.design.GIcons
 import app.goloom.client.design.GSectionLabel
 import app.goloom.client.design.GTopBar
+import app.goloom.client.util.Downloader
+import app.goloom.client.util.Installer
 import app.goloom.client.util.UpdateChecker
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
 fun UpdatesScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     var result by remember { mutableStateOf<UpdateChecker.Result?>(null) }
+    var dlState by remember { mutableStateOf<Downloader.State>(Downloader.State.Idle) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         result = withContext(Dispatchers.IO) { UpdateChecker.check(context) }
@@ -90,13 +95,37 @@ fun UpdatesScreen(onBack: () -> Unit) {
                 )
                 is UpdateChecker.Result.Available -> AvailableContent(
                     available = r,
-                    onInstall = {
-                        if (r.downloadUrl.isNotBlank()) {
-                            val intent = Intent(Intent.ACTION_VIEW).apply {
-                                data = Uri.parse(r.downloadUrl)
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    dlState = dlState,
+                    onDownload = {
+                        if (r.downloadUrl.isBlank()) {
+                            dlState = Downloader.State.Failed(
+                                context.getString(R.string.updates_no_download_url),
+                            )
+                            return@AvailableContent
+                        }
+                        scope.launch {
+                            dlState = Downloader.State.Downloading(0, 0, 0)
+                            try {
+                                val file = Downloader.downloadApk(
+                                    context, r.downloadUrl,
+                                ) { pct, downloaded, total ->
+                                    dlState = Downloader.State.Downloading(pct, downloaded, total)
+                                }
+                                dlState = Downloader.State.Ready(file)
+                                // Сразу открываем installer, юзеру не нужно
+                                // лишнее нажатие.
+                                Installer.installApk(context, file)
+                            } catch (t: Throwable) {
+                                dlState = Downloader.State.Failed(
+                                    t.message ?: t.javaClass.simpleName,
+                                )
                             }
-                            context.startActivity(intent)
+                        }
+                    },
+                    onOpenInstaller = {
+                        val s = dlState
+                        if (s is Downloader.State.Ready) {
+                            Installer.installApk(context, s.file)
                         }
                     },
                     onLater = onBack,
@@ -122,14 +151,12 @@ private fun CenterStatus(text: String, withSpinner: Boolean = false) {
     }
 }
 
-/**
- * Receiver-extension на ColumnScope: позволяет вызывать `Spacer.weight(1f)`
- * внутри функции — иначе weight доступен только напрямую в Column-литералe.
- */
 @Composable
 private fun androidx.compose.foundation.layout.ColumnScope.AvailableContent(
     available: UpdateChecker.Result.Available,
-    onInstall: () -> Unit,
+    dlState: Downloader.State,
+    onDownload: () -> Unit,
+    onOpenInstaller: () -> Unit,
     onLater: () -> Unit,
 ) {
     Spacer(modifier = Modifier.height(4.dp))
@@ -194,23 +221,93 @@ private fun androidx.compose.foundation.layout.ColumnScope.AvailableContent(
             style = TextStyle(fontSize = 14.sp, lineHeight = 20.sp),
         )
     }
+
     Spacer(modifier = Modifier.weight(1f))
+
+    // Action area: меняется по dlState — Idle → Install button,
+    // Downloading → progress bar, Ready → Open installer button,
+    // Failed → red label + retry.
     Column(
         modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        GButton(
-            text = stringResource(R.string.updates_install),
-            onClick = onInstall,
-            variant = GButtonVariant.Primary,
-            fullWidth = true,
-        )
-        GButton(
-            text = stringResource(R.string.updates_remind_later),
-            onClick = onLater,
-            variant = GButtonVariant.Ghost,
-            fullWidth = true,
-        )
+        when (dlState) {
+            Downloader.State.Idle -> {
+                GButton(
+                    text = stringResource(R.string.updates_install),
+                    onClick = onDownload,
+                    variant = GButtonVariant.Primary,
+                    fullWidth = true,
+                )
+                GButton(
+                    text = stringResource(R.string.updates_remind_later),
+                    onClick = onLater,
+                    variant = GButtonVariant.Ghost,
+                    fullWidth = true,
+                )
+            }
+            is Downloader.State.Downloading -> {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.updates_downloading, dlState.percent),
+                            color = G.text,
+                            style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Medium),
+                        )
+                        if (dlState.totalBytes > 0) {
+                            Text(
+                                text = "${humanSize(dlState.downloadedBytes)} / ${humanSize(dlState.totalBytes)}",
+                                color = G.textDim,
+                                style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp),
+                            )
+                        }
+                    }
+                    LinearProgressIndicator(
+                        progress = { dlState.percent / 100f },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp)),
+                        color = G.text,
+                        trackColor = G.bgElev3,
+                    )
+                }
+            }
+            is Downloader.State.Ready -> {
+                GButton(
+                    text = stringResource(R.string.updates_open_installer),
+                    onClick = onOpenInstaller,
+                    variant = GButtonVariant.Primary,
+                    fullWidth = true,
+                )
+            }
+            is Downloader.State.Failed -> {
+                Text(
+                    text = stringResource(R.string.updates_download_failed, dlState.message),
+                    color = G.err,
+                    style = TextStyle(fontSize = 13.sp),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                GButton(
+                    text = stringResource(R.string.action_retry),
+                    onClick = onDownload,
+                    variant = GButtonVariant.Primary,
+                    fullWidth = true,
+                )
+                GButton(
+                    text = stringResource(R.string.updates_remind_later),
+                    onClick = onLater,
+                    variant = GButtonVariant.Ghost,
+                    fullWidth = true,
+                )
+            }
+        }
     }
 }
 

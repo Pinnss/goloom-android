@@ -115,6 +115,10 @@
     <string name="updates_up_to_date">Up to date</string>
     <string name="updates_checking">Checking…</string>
     <string name="updates_check_failed">Check failed</string>
+    <string name="updates_downloading">Downloading… %1$d%%</string>
+    <string name="updates_download_failed">Download failed: %1$s</string>
+    <string name="updates_open_installer">Open installer</string>
+    <string name="updates_no_download_url">No APK attached to this release</string>
     <string name="updates_banner_title">Version %1$s available</string>
     <string name="updates_banner_sub">Tap to install update</string>
     <string name="updates_banner_action">Update</string>
