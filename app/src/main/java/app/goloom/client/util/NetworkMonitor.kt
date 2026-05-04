@@ -73,13 +73,30 @@ class NetworkMonitor private constructor(context: Context) {
     }
 
     fun start() {
-        // registerDefaultNetworkCallback — Android 7.0+ (API 24).
-        // Минимум у нас 26, так что всегда доступно.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            cm.registerDefaultNetworkCallback(callback)
-            // Если уже есть активная сеть на момент старта, отметим.
-            cm.activeNetwork?.let {
-                currentNetwork = it
+        // КРИТИЧНО: ИСКЛЮЧАЕМ VPN из коллбэков. Без NET_CAPABILITY_NOT_VPN
+        // наш собственный туннель ловится как "новая default-network",
+        // когда Builder.establish() ставит TUN — это триггерит ACTION_RECONNECT
+        // → teardown → reconnect → опять establish() → onAvailable...
+        // бесконечный цикл, на сервере виден как непрерывный re-handshake.
+        //
+        // С NOT_VPN коллбэк ловит только underlying network (WiFi/mobile),
+        // на смену которой мы и хотим реагировать.
+        val req = android.net.NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+            .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
+            .addTransportType(NetworkCapabilities.TRANSPORT_ETHERNET)
+            .build()
+        cm.registerNetworkCallback(req, callback)
+        // Запоминаем текущую non-VPN сеть, чтобы первый onAvailable не
+        // считался сменой.
+        cm.activeNetwork?.let { net ->
+            val caps = cm.getNetworkCapabilities(net)
+            if (caps != null &&
+                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            ) {
+                currentNetwork = net
                 _available.value = true
             }
         }

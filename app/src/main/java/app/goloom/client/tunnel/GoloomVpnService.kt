@@ -80,6 +80,15 @@ class GoloomVpnService : VpnService() {
     private var activeProfileId: String? = null
     private var networkObserverJob: Job? = null
 
+    /**
+     * Timestamp последней успешной попытки connect. Используется как
+     * грубый throttle для авто-реконнектов: если новый network-change
+     * случился < 10 сек назад, скорее всего, это эхо нашего же VPN
+     * (вторичный callback после establish), а не реальная смена WiFi
+     * → mobile. Throttle гасит reconnect-loop'ы.
+     */
+    private var lastReconnectAt: Long = 0L
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_CONNECT -> {
@@ -90,6 +99,7 @@ class GoloomVpnService : VpnService() {
                 }
                 startForegroundNotification()
                 activeProfileId = profileId
+                lastReconnectAt = System.currentTimeMillis()
                 ensureNetworkObserver()
                 // Если уже идёт сессия (например, рестарт из-за смены сети) —
                 // teardown сначала, потом новый connect.
@@ -116,6 +126,7 @@ class GoloomVpnService : VpnService() {
                     return START_STICKY
                 }
                 LogStore.get(this).info(LogSource.APP, "Network changed — reconnecting profile $pid")
+                lastReconnectAt = System.currentTimeMillis()
                 connectJob?.cancel()
                 connectJob = scope.launch {
                     teardown()
@@ -141,6 +152,19 @@ class GoloomVpnService : VpnService() {
                     LogStore.get(this).info(
                         LogSource.APP,
                         "Network changed but autoReconnect=off — staying as-is",
+                    )
+                    return@onEach
+                }
+                // Throttle: между reconnect'ами должно пройти > 10s.
+                // Без этого NetworkMonitor дёргается на каждое
+                // capabilities-changed (WiFi validate/unvalidate, capacities
+                // upgrades) и устраивает рекоектный шторм, который сервер
+                // видит как непрерывный re-handshake.
+                val sinceLast = System.currentTimeMillis() - lastReconnectAt
+                if (lastReconnectAt > 0 && sinceLast < 10_000) {
+                    LogStore.get(this).info(
+                        LogSource.APP,
+                        "Skipping network-change reconnect (last was ${sinceLast}ms ago)",
                     )
                     return@onEach
                 }
