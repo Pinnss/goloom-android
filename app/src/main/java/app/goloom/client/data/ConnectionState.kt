@@ -19,16 +19,20 @@ sealed class ConnectionState {
     data class Connecting(val phase: String = "", val detail: String? = null) : ConnectionState() {
         fun humanLabel(): String = when (phase) {
             "init" -> "Запуск"
-            "resolving" -> "Резолвим SFU edge IP"
-            "lobby_join" -> "Заход в лобби-звонок"
+            "resolving" -> "Резолвим edge IP"
+            // Telemost
+            "telemost_setup" -> "Telemost session bootstrap"
+            // VK lobby flow
+            "lobby_join" -> "Заход в VK лобби-звонок"
             "lobby_auth" -> "VK auth ladder (лобби)"
             "lobby_wait_server" -> "Ждём сервер в лобби"
             "lobby_dial" -> "DIAL серверу"
             "lobby_done" -> "DIAL принят"
-            "auth" -> "VK auth ladder"
+            "auth" -> "VK auth ladder (target)"
             "captcha" -> "Решение captcha"
+            "target_connect" -> "Peer-join в target звонок"
+            // Telemost shared
             "waiting_for_peer" -> "Ждём пира"
-            "target_connect" -> "Peer-join в target"
             "handshake" -> "SDP handshake"
             "bridge_up" -> "WireGuard bridge"
             "ready" -> "Готово"
