@@ -1,9 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- Разрешаем cleartext до 127.0.0.1 — туда WireGuard шлёт пакеты
-         к нашему локальному goloom-relay. Внешние домены — только TLS. -->
+    <!-- Разрешаем cleartext только до loopback'а — туда:
+         1) WireGuard шлёт пакеты к нашему локальному goloom-relay,
+         2) Captcha WebView грузит локальный reverse-proxy для VK
+            (см. vkcalls.AutoProxyCaptchaSolver — открывается на
+            http://localhost:PORT). На Android 'localhost' и
+            '127.0.0.1' это разные домены для network-security;
+            нужно перечислять оба. -->
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
     </domain-config>
     <base-config cleartextTrafficPermitted="false" />
 </network-security-config>
