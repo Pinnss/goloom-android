@@ -201,10 +201,10 @@ private fun StatusCaption(state: ConnectionState, stats: TunnelStats) {
             stringResource(R.string.main_sub_off),
             G.textDim,
         )
-        ConnectionState.Connecting -> Quad(
+        is ConnectionState.Connecting -> Quad(
             stringResource(R.string.main_kicker_status),
-            stringResource(R.string.main_status_connecting),
-            stringResource(R.string.main_sub_connecting),
+            state.humanLabel(),
+            state.detail ?: stringResource(R.string.main_sub_connecting),
             G.warn,
         )
         is ConnectionState.On -> Quad(
@@ -294,7 +294,7 @@ private fun ExitIpCard(state: ConnectionState) {
         }
         val dot = when (state) {
             is ConnectionState.On -> G.ok
-            ConnectionState.Connecting -> G.warn
+            is ConnectionState.Connecting -> G.warn
             else -> G.textMute
         }
         GDot(color = dot)

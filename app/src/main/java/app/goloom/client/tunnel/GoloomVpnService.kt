@@ -9,8 +9,10 @@ import android.net.VpnService
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import app.goloom.bridge.mobile.CaptchaSolver
 import app.goloom.bridge.mobile.LogSink
 import app.goloom.bridge.mobile.Mobile
+import app.goloom.bridge.mobile.PhaseListener
 import app.goloom.bridge.mobile.SocketProtector
 import app.goloom.client.MainActivity
 import app.goloom.client.R
@@ -198,7 +200,7 @@ class GoloomVpnService : VpnService() {
     private suspend fun connect(profileId: String) {
         val log = LogStore.get(this)
         val controller = GoloomController.get(this)
-        controller.publishState(ConnectionState.Connecting)
+        controller.publishState(ConnectionState.Connecting(phase = "init", detail = null))
 
         val profile = ProfileStore.get(this).byId(profileId) ?: run {
             log.error(LogSource.APP, "Profile $profileId not found")
@@ -225,6 +227,38 @@ class GoloomVpnService : VpnService() {
                         log.add(LogLevel.INFO, LogSource.SDK, line)
                     }
                 })
+                // Phase updates → ConnectionState.Connecting(phase, detail).
+                // UI MainScreen рендерит сменяющиеся подписи во время
+                // долгого подключения (lobby auth, captcha, target connect, ...).
+                c.setPhaseListener(object : PhaseListener {
+                    override fun onPhase(phase: String, detail: String?) {
+                        controller.publishState(ConnectionState.Connecting(phase, detail))
+                    }
+                })
+                // VK lobby режим — meeting URL вводится пользователем
+                // отдельно (Profile.vkTargetMeeting). Captcha solver
+                // пока заглушка: возвращает ошибку — TODO WebView dialog.
+                if (parsed.hasLobby) {
+                    val target = profile.vkTargetMeeting
+                    if (target.isNullOrBlank()) {
+                        log.error(LogSource.APP, "VK lobby connstr но профиль без vkTargetMeeting")
+                        controller.publishState(
+                            ConnectionState.Error("Введи VK call link в настройках профиля")
+                        )
+                        stopSelf(); return
+                    }
+                    c.setVKTargetMeeting(target)
+                    c.setCaptchaSolver(object : CaptchaSolver {
+                        override fun solve(challengeURL: String): String {
+                            // TODO: WebView dialog (см. tun/CaptchaWebViewDialog.kt).
+                            // На первой итерации просто логируем и
+                            // фейлимся — серверной стороне auto-replay
+                            // обычно достаточно через captcha pool.
+                            log.error(LogSource.APP, "Captcha required but no UI yet: $challengeURL")
+                            throw Exception("Captcha solver not yet implemented")
+                        }
+                    })
+                }
             }
         } catch (t: Throwable) {
             log.error(LogSource.APP, "SDK init failed: ${t.message}")

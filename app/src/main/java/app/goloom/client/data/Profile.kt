@@ -18,6 +18,12 @@ data class Profile(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
     val connStr: String,                  // полная строка goloom://...
+    /**
+     * VK Calls target meeting URL — заполняется юзером в UI когда
+     * connstr в lobby режиме (нет 'm' field, есть 'lm'+'b'). Сервер
+     * лениво peer-join'ится к этому meeting'у на DIAL.
+     */
+    val vkTargetMeeting: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
 ) {
@@ -32,14 +38,25 @@ data class Profile(
     /** Хост сервера для отображения в Profile-pill. */
     val serverDisplay: String
         get() = runCatching {
-            val u = java.net.URI(parsed.meeting)
-            u.host ?: parsed.meeting
-        }.getOrDefault(parsed.meeting)
+            // Для lobby connstr'а (VK client-meeting) показываем lobby host
+            // или target meeting (если уже задан пользователем).
+            val ref = vkTargetMeeting
+                ?: parsed.meeting.takeIf { it.isNotBlank() }
+                ?: parsed.lobbyMeetingUrl
+                ?: return@runCatching "—"
+            val u = java.net.URI(ref)
+            u.host ?: ref
+        }.getOrDefault("—")
+
+    /** True если это VK client-meeting профиль и пользователь ещё не ввёл meeting URL. */
+    val needsVKMeetingInput: Boolean
+        get() = parsed.hasLobby && vkTargetMeeting.isNullOrBlank()
 
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id)
         put("name", name)
         put("connStr", connStr)
+        if (!vkTargetMeeting.isNullOrBlank()) put("vkTargetMeeting", vkTargetMeeting)
         put("createdAt", createdAt)
         put("updatedAt", updatedAt)
     }
@@ -49,6 +66,7 @@ data class Profile(
             id = o.optString("id", UUID.randomUUID().toString()),
             name = o.optString("name", "Goloom profile"),
             connStr = o.getString("connStr"),
+            vkTargetMeeting = o.optString("vkTargetMeeting").takeIf { it.isNotBlank() },
             createdAt = o.optLong("createdAt", System.currentTimeMillis()),
             updatedAt = o.optLong("updatedAt", System.currentTimeMillis()),
         )

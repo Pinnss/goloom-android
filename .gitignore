@@ -36,3 +36,10 @@ Thumbs.db
 *.jks
 keystore.properties
 release.jks
+
+# Session-meta — handoff notes, working logs, scratch summaries
+# from claude-driven sessions. Stays local, never pushed to the
+# public repo.
+/HANDOFF*.md
+/SESSION*.md
+/NOTES*.md
