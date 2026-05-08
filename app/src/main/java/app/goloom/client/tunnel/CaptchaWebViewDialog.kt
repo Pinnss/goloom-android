@@ -134,10 +134,24 @@ fun CaptchaWebViewDialog(
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
                             settings.userAgentString = MOBILE_UA
+                            // Identity rotation: WebView должен выглядеть как
+                            // СВЕЖАЯ установка для каждого dialog'а. Без этого
+                            // VK помнит cookies (id.vk.com session, captcha
+                            // tokens) с прошлой попытки и палит как 'тот же
+                            // user только что прошёл — bot'? Симптом — почти
+                            // мгновенный 'Не удалось пройти проверку'.
+                            // (Так же пофиксило в tun/ via v1.2.0
+                            // 'identity rotation in manual captcha').
                             clearCache(true)
+                            clearHistory()
+                            clearFormData()
                             val cm = android.webkit.CookieManager.getInstance()
+                            cm.removeAllCookies(null)
+                            cm.flush()
                             cm.setAcceptCookie(true)
                             cm.setAcceptThirdPartyCookies(this, true)
+                            // DOM storage / cache (IndexedDB / Web SQL etc).
+                            android.webkit.WebStorage.getInstance().deleteAllData()
 
                             webViewClient = object : WebViewClient() {
                                 override fun onPageStarted(
