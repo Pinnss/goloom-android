@@ -255,6 +255,14 @@ class GoloomVpnService : VpnService() {
                             CaptchaController.present(url)
                         }
                     })
+                    // Client-side captcha pool: успешный manual solve
+                    // захватывает FP в файл; следующий коннект replay'ит
+                    // через captcha_v2 в Go без UI. Один на устройство;
+                    // через 2-3 ручных solve'а captcha исчезает совсем.
+                    val poolDir = java.io.File(filesDir, "vkcalls").apply { mkdirs() }
+                    val poolPath = java.io.File(poolDir, "profiles.json").absolutePath
+                    c.setVKProfileStorePath(poolPath)
+                    log.info(LogSource.APP, "vk-calls captcha pool: $poolPath")
                 }
             }
         } catch (t: Throwable) {
