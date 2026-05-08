@@ -47,6 +47,8 @@ import app.goloom.client.screens.ProfileEditScreen
 import app.goloom.client.screens.ProfilesScreen
 import app.goloom.client.screens.SettingsScreen
 import app.goloom.client.screens.UpdatesScreen
+import app.goloom.client.tunnel.CaptchaController
+import app.goloom.client.tunnel.CaptchaWebViewDialog
 import app.goloom.client.tunnel.GoloomController
 import app.goloom.client.util.DeepLink
 import app.goloom.client.util.UpdateState
@@ -89,6 +91,16 @@ class MainActivity : ComponentActivity() {
                     deepImportName = deepImported?.name,
                     onConnect = ::tryConnect,
                 )
+                // Captcha WebView — показывается поверх всего navigation
+                // когда Go-сторона публикует pending URL'у в
+                // CaptchaController.
+                val captchaUrl by CaptchaController.pendingUrl.collectAsState()
+                captchaUrl?.let { url ->
+                    CaptchaWebViewDialog(
+                        url = url,
+                        onDismiss = { CaptchaController.dismiss() },
+                    )
+                }
             }
         }
     }

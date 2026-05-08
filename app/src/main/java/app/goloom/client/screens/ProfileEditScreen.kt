@@ -65,19 +65,26 @@ fun ProfileEditScreen(
 
     var name by remember { mutableStateOf(profile.name) }
     var connStr by remember { mutableStateOf(profile.connStr) }
+    var vkTargetMeeting by remember { mutableStateOf(profile.vkTargetMeeting.orEmpty()) }
 
     val currentName = rememberUpdatedState(name)
     val currentConnStr = rememberUpdatedState(connStr)
+    val currentVKMeeting = rememberUpdatedState(vkTargetMeeting)
 
     DisposableEffect(profileId) {
         onDispose {
             val freshName = currentName.value.trim().ifEmpty { profile.name }
             val freshStr = currentConnStr.value.trim()
-            if (freshName != profile.name || freshStr != profile.connStr) {
+            val freshVKMeeting = currentVKMeeting.value.trim().ifEmpty { null }
+            if (freshName != profile.name ||
+                freshStr != profile.connStr ||
+                freshVKMeeting != profile.vkTargetMeeting
+            ) {
                 store.update(
                     profile.copy(
                         name = freshName,
                         connStr = freshStr.ifEmpty { profile.connStr },
+                        vkTargetMeeting = freshVKMeeting,
                     ),
                 )
             }
@@ -133,6 +140,39 @@ fun ProfileEditScreen(
                 textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 13.sp),
                 colors = goloomTextFieldColors(),
             )
+
+            // VK Calls in-band lobby (S2/S3): meeting URL не зашит в
+            // connstr (lobby_meeting_url только под server'а), а
+            // вводится пользователем здесь. Поле появляется только
+            // когда профиль действительно lobby-режима.
+            val parsedSafe = runCatching { profile.parsed }.getOrNull()
+            if (parsedSafe?.hasLobby == true) {
+                Spacer(modifier = Modifier.height(8.dp))
+                GSectionLabel(text = "VK Call link")
+                OutlinedTextField(
+                    value = vkTargetMeeting,
+                    onValueChange = { vkTargetMeeting = it },
+                    placeholder = {
+                        Text(
+                            "https://vk.com/call/join/...",
+                            color = G.textMute,
+                        )
+                    },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 13.sp),
+                    colors = goloomTextFieldColors(),
+                )
+                Text(
+                    text = "Сервер ленится — peer-join делает только когда " +
+                        "ты введёшь свой VK call link и нажмёшь Connect.",
+                    color = G.textMute,
+                    style = TextStyle(fontSize = 12.sp),
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+
             Spacer(modifier = Modifier.height(40.dp))
         }
     }

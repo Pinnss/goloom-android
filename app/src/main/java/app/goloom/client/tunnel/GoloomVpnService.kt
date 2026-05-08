@@ -9,7 +9,7 @@ import android.net.VpnService
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
-import app.goloom.bridge.mobile.CaptchaSolver
+import app.goloom.bridge.mobile.BrowserLauncher
 import app.goloom.bridge.mobile.LogSink
 import app.goloom.bridge.mobile.Mobile
 import app.goloom.bridge.mobile.PhaseListener
@@ -236,8 +236,9 @@ class GoloomVpnService : VpnService() {
                     }
                 })
                 // VK lobby режим — meeting URL вводится пользователем
-                // отдельно (Profile.vkTargetMeeting). Captcha solver
-                // пока заглушка: возвращает ошибку — TODO WebView dialog.
+                // отдельно (Profile.vkTargetMeeting). BrowserLauncher
+                // публикует localhost-URL в [CaptchaController];
+                // MainActivity рендерит CaptchaWebViewDialog.
                 if (parsed.hasLobby) {
                     val target = profile.vkTargetMeeting
                     if (target.isNullOrBlank()) {
@@ -248,14 +249,10 @@ class GoloomVpnService : VpnService() {
                         stopSelf(); return
                     }
                     c.setVKTargetMeeting(target)
-                    c.setCaptchaSolver(object : CaptchaSolver {
-                        override fun solve(challengeURL: String): String {
-                            // TODO: WebView dialog (см. tun/CaptchaWebViewDialog.kt).
-                            // На первой итерации просто логируем и
-                            // фейлимся — серверной стороне auto-replay
-                            // обычно достаточно через captcha pool.
-                            log.error(LogSource.APP, "Captcha required but no UI yet: $challengeURL")
-                            throw Exception("Captcha solver not yet implemented")
+                    c.setBrowserLauncher(object : BrowserLauncher {
+                        override fun open(url: String) {
+                            log.info(LogSource.APP, "captcha: opening WebView for $url")
+                            CaptchaController.present(url)
                         }
                     })
                 }
