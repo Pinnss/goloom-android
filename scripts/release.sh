@@ -17,10 +17,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ANDROID_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Где лежит SDK (sibling-папка по умолчанию).
-SDK_REPO="${GOLOOM_SERVER_REPO:-${ANDROID_ROOT}/../goloom-server-public}"
+SDK_REPO="${GOLOOM_SERVER_REPO:-${ANDROID_ROOT}/../server-public}"
+if [[ ! -d "${SDK_REPO}" ]]; then
+    SDK_REPO="${ANDROID_ROOT}/../goloom-server-public"
+fi
 
 if [[ ! -d "${SDK_REPO}" ]]; then
-    echo "ERROR: goloom-server-public не найден по пути ${SDK_REPO}"
+    echo "ERROR: goloom-server-public/server-public не найден"
     echo "       Либо положи рядом, либо задай: GOLOOM_SERVER_REPO=/path/to/goloom-server"
     exit 1
 fi
