@@ -12,11 +12,7 @@ import org.json.JSONObject
  * optional с дефолтами).
  */
 data class ConnStr(
-    /**
-     * Meeting URL. Для Telemost — обязателен. Для VK Calls в client-meeting
-     * режиме (S2/S3) — пустой; URL вводит пользователь в UI и кладёт в
-     * [Profile.vkTargetMeeting].
-     */
+    /** Meeting URL — обязателен для всех транспортов. */
     val meeting: String,
     val displayName: String? = null,
     val tag: String? = null,
@@ -31,10 +27,6 @@ data class ConnStr(
     /** Codec hint для VK ("vp8" или "h264"; пусто = h264). */
     val codec: String? = null,
 
-    /** VK Calls in-band lobby bootstrap (S2/S3). */
-    val lobbyMeetingUrl: String? = null,
-    val bearer: String? = null,
-
     // WG-конфиг, заданный inline. Все 4 ключевых поля должны присутствовать,
     // иначе [hasWireGuard] вернёт false и Connect не запустится.
     val wgClientPrivate: String? = null,
@@ -46,13 +38,10 @@ data class ConnStr(
     /** Полная исходная строка `goloom://...` для re-export. */
     val raw: String,
 ) {
-    /** Connstr использует in-band lobby bootstrap (S2/S3 client-meeting). */
-    val hasLobby: Boolean
-        get() = !lobbyMeetingUrl.isNullOrEmpty() && !bearer.isNullOrEmpty()
-
     /** Connstr описывает VK Calls транспорт. */
     val isVKCalls: Boolean
         get() = transport == "vk-calls"
+
     /** Минимально валиден ли встроенный WG-конфиг. */
     val hasWireGuard: Boolean
         get() = !wgClientPrivate.isNullOrEmpty() &&
@@ -126,11 +115,8 @@ object ConnStrParser {
             return Result.Error("Invalid JSON: ${e.message}")
         }
         val meeting = json.optString("m").takeIf { it.isNotBlank() } ?: ""
-        val lobbyMeeting = json.optString("lm").takeIf { it.isNotBlank() }
-        val bearer = json.optString("b").takeIf { it.isNotBlank() }
-        // Meeting обязателен ИЛИ lobby bootstrap должен быть полным.
-        if (meeting.isEmpty() && (lobbyMeeting.isNullOrEmpty() || bearer.isNullOrEmpty())) {
-            return Result.Error("Missing 'm' (meeting URL) or 'lm'+'b' (lobby bootstrap)")
+        if (meeting.isEmpty()) {
+            return Result.Error("Missing 'm' (meeting URL)")
         }
         return Result.Ok(
             ConnStr(
@@ -143,8 +129,6 @@ object ConnStrParser {
                 kcpRcvWnd = json.optInt("kr", 0),
                 transport = json.optString("t").takeIf { it.isNotBlank() },
                 codec = json.optString("c").takeIf { it.isNotBlank() },
-                lobbyMeetingUrl = lobbyMeeting,
-                bearer = bearer,
                 wgClientPrivate = json.optString("wgcp").takeIf { it.isNotBlank() },
                 wgServerPublic = json.optString("wgsp").takeIf { it.isNotBlank() },
                 wgClientAddress = json.optString("wga").takeIf { it.isNotBlank() },

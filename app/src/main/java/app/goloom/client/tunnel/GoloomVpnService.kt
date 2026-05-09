@@ -229,36 +229,25 @@ class GoloomVpnService : VpnService() {
                 })
                 // Phase updates → ConnectionState.Connecting(phase, detail).
                 // UI MainScreen рендерит сменяющиеся подписи во время
-                // долгого подключения (lobby auth, captcha, target connect, ...).
+                // долгого подключения (auth, captcha, target connect, ...).
                 c.setPhaseListener(object : PhaseListener {
                     override fun onPhase(phase: String, detail: String?) {
                         controller.publishState(ConnectionState.Connecting(phase, detail))
                     }
                 })
-                // VK lobby режим — meeting URL вводится пользователем
-                // отдельно (Profile.vkTargetMeeting). BrowserLauncher
-                // публикует localhost-URL в [CaptchaController];
-                // MainActivity рендерит CaptchaWebViewDialog.
-                if (parsed.hasLobby) {
-                    val target = profile.vkTargetMeeting
-                    if (target.isNullOrBlank()) {
-                        log.error(LogSource.APP, "VK lobby connstr но профиль без vkTargetMeeting")
-                        controller.publishState(
-                            ConnectionState.Error("Введи VK call link в настройках профиля")
-                        )
-                        stopSelf(); return
-                    }
-                    c.setVKTargetMeeting(target)
+                // VK Calls captcha: BrowserLauncher публикует localhost-URL
+                // в [CaptchaController]; MainActivity рендерит
+                // CaptchaWebViewDialog. Client-side captcha pool: успешный
+                // manual solve захватывает FP в файл; следующий коннект
+                // replay'ит через captcha_v2 в Go без UI. Один на устройство;
+                // через 2-3 ручных solve'а captcha исчезает совсем.
+                if (parsed.isVKCalls) {
                     c.setBrowserLauncher(object : BrowserLauncher {
                         override fun open(url: String) {
                             log.info(LogSource.APP, "captcha: opening WebView for $url")
                             CaptchaController.present(url)
                         }
                     })
-                    // Client-side captcha pool: успешный manual solve
-                    // захватывает FP в файл; следующий коннект replay'ит
-                    // через captcha_v2 в Go без UI. Один на устройство;
-                    // через 2-3 ручных solve'а captcha исчезает совсем.
                     val poolDir = java.io.File(filesDir, "vkcalls").apply { mkdirs() }
                     val poolPath = java.io.File(poolDir, "profiles.json").absolutePath
                     c.setVKProfileStorePath(poolPath)
