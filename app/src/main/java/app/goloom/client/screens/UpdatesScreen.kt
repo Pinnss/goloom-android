@@ -2,6 +2,8 @@ package app.goloom.client.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -93,7 +95,7 @@ fun UpdatesScreen(onBack: () -> Unit) {
                 is UpdateChecker.Result.Failed -> CenterStatus(
                     text = "${stringResource(R.string.updates_check_failed)} — ${r.message}",
                 )
-                is UpdateChecker.Result.Available -> AvailableContent(
+                is UpdateChecker.Result.Available -> AvailableLayout(
                     available = r,
                     dlState = dlState,
                     onDownload = {
@@ -101,7 +103,7 @@ fun UpdatesScreen(onBack: () -> Unit) {
                             dlState = Downloader.State.Failed(
                                 context.getString(R.string.updates_no_download_url),
                             )
-                            return@AvailableContent
+                            return@AvailableLayout
                         }
                         scope.launch {
                             dlState = Downloader.State.Downloading(0, 0, 0)
@@ -151,14 +153,46 @@ private fun CenterStatus(text: String, withSpinner: Boolean = false) {
     }
 }
 
+/**
+ * AvailableLayout splits the screen into a scrollable content area
+ * (version chunk + arbitrary-length release notes) and a sticky
+ * bottom action bar. Earlier layout used Spacer.weight(1f) inside
+ * a single non-scrolling Column — when release notes overflowed
+ * the screen, Spacer collapsed to zero and the install button
+ * disappeared below the viewport with no way to scroll to it
+ * (operator could only "Remind later" on a different screen).
+ *
+ * Sticky bottom = guaranteed-visible Install button regardless of
+ * how long the release notes are. The content above scrolls
+ * independently.
+ */
 @Composable
-private fun androidx.compose.foundation.layout.ColumnScope.AvailableContent(
+private fun androidx.compose.foundation.layout.ColumnScope.AvailableLayout(
     available: UpdateChecker.Result.Available,
     dlState: Downloader.State,
     onDownload: () -> Unit,
     onOpenInstaller: () -> Unit,
     onLater: () -> Unit,
 ) {
+    // Scrollable content — header + notes.
+    Column(
+        modifier = Modifier
+            .weight(1f)
+            .verticalScroll(rememberScrollState()),
+    ) {
+        AvailableContent(available)
+    }
+    // Sticky bottom: Install + state-driven action buttons.
+    AvailableActions(
+        dlState = dlState,
+        onDownload = onDownload,
+        onOpenInstaller = onOpenInstaller,
+        onLater = onLater,
+    )
+}
+
+@Composable
+private fun AvailableContent(available: UpdateChecker.Result.Available) {
     Spacer(modifier = Modifier.height(4.dp))
     // Version chunk
     Column(
@@ -221,12 +255,26 @@ private fun androidx.compose.foundation.layout.ColumnScope.AvailableContent(
             style = TextStyle(fontSize = 14.sp, lineHeight = 20.sp),
         )
     }
+    // Tail spacer so the last note line isn't flush against the
+    // sticky action bar's top edge when the content scrolls fully
+    // down. ~14dp matches the action bar's vertical padding.
+    Spacer(modifier = Modifier.height(14.dp))
+}
 
-    Spacer(modifier = Modifier.weight(1f))
-
-    // Action area: меняется по dlState — Idle → Install button,
-    // Downloading → progress bar, Ready → Open installer button,
-    // Failed → red label + retry.
+/**
+ * Sticky-bottom action area. State-driven: Idle → Install button,
+ * Downloading → progress bar, Ready → Open installer, Failed → red
+ * label + retry. Lives outside the scrollable AvailableContent so
+ * the operator can always reach Install regardless of release-notes
+ * length.
+ */
+@Composable
+private fun AvailableActions(
+    dlState: Downloader.State,
+    onDownload: () -> Unit,
+    onOpenInstaller: () -> Unit,
+    onLater: () -> Unit,
+) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
