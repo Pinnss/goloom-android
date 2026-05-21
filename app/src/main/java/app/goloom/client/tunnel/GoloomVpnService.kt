@@ -208,6 +208,15 @@ class GoloomVpnService : VpnService() {
             stopSelf(); return
         }
 
+        // vkturnproxy:// links use the SRTP-relay client path: the Go
+        // SDK does VK auth → N TURN allocations → DTLS-SRTP handshake
+        // → wireguard-go on the supplied TUN fd, all inside a single
+        // ConnectVKTurnSRTP call. No legacy connect()+adoptTun pair.
+        if (profile.connStr.trim().startsWith("vkturnproxy://")) {
+            connectVKTurnSRTP(profile.connStr)
+            return
+        }
+
         val parsed = profile.parsed
         if (!parsed.hasWireGuard) {
             log.error(LogSource.APP, "Profile has no embedded WG config — refusing")
@@ -382,6 +391,151 @@ class GoloomVpnService : VpnService() {
         }
 
         // 4. Tick-loop публикует stats каждую секунду.
+        startedAt = System.currentTimeMillis()
+        controller.publishState(ConnectionState.On(startedAt))
+        statsJob = scope.launch {
+            while (isActive) {
+                publishStats()
+                delay(1_000)
+            }
+        }
+    }
+
+    /**
+     * Connect flow for vk-turn-srtp profiles (vkturnproxy:// connection
+     * link). Different shape from the SFU/Telemost path:
+     *
+     *   1. PreviewVKTurnProxyLink returns tunnel-address + MTU + DNS
+     *      from the link without doing any network I/O — we use it to
+     *      build VpnService.Builder.
+     *   2. establish() yields the TUN fd; detach it from the
+     *      ParcelFileDescriptor before handing to Go (same ownership
+     *      contract as the legacy AdoptTun path).
+     *   3. client.connectVKTurnSRTP(connstr, rawFd) runs VK auth + N
+     *      TURN allocations + DTLS-SRTP handshake + wireguard-go-on-fd
+     *      in one call. Returns when the WG device is up.
+     *
+     * Captcha solver is wired the same way as for vk-calls — the link
+     * almost always involves the VK anonymous-auth ladder so we
+     * publish CaptchaController updates on the BrowserLauncher hook.
+     */
+    private suspend fun connectVKTurnSRTP(connStr: String) {
+        val log = LogStore.get(this)
+        val controller = GoloomController.get(this)
+
+        val client = try {
+            Mobile.newClient().also { c ->
+                c.setSocketProtector(object : SocketProtector {
+                    override fun protect(fd: Long): Boolean =
+                        this@GoloomVpnService.protect(fd.toInt())
+                })
+                c.setLogSink(object : LogSink {
+                    override fun write(line: String) {
+                        log.add(LogLevel.INFO, LogSource.SDK, line)
+                    }
+                })
+                c.setPhaseListener(object : PhaseListener {
+                    override fun onPhase(phase: String, detail: String?) {
+                        controller.publishState(ConnectionState.Connecting(phase, detail))
+                    }
+                })
+                c.setBrowserLauncher(object : BrowserLauncher {
+                    override fun open(url: String) {
+                        log.info(LogSource.APP, "captcha: opening WebView for $url")
+                        CaptchaController.present(url)
+                    }
+                })
+                val poolDir = java.io.File(filesDir, "vkcalls").apply { mkdirs() }
+                val poolPath = java.io.File(poolDir, "profiles.json").absolutePath
+                c.setVKProfileStorePath(poolPath)
+            }
+        } catch (t: Throwable) {
+            log.error(LogSource.APP, "SDK init failed: ${t.message}")
+            controller.publishState(ConnectionState.Error(t.message ?: "SDK init failed"))
+            stopSelf(); return
+        }
+        goloomClient = client
+
+        // 1. Preview the link to learn tunnel address / MTU / DNS.
+        val previewJson = try {
+            withContext(Dispatchers.IO) { client.previewVKTurnProxyLink(connStr) }
+        } catch (t: Throwable) {
+            log.error(LogSource.APP, "vkturnproxy preview failed: ${t.message}")
+            controller.publishState(ConnectionState.Error(t.message ?: "link preview failed"))
+            teardown(); stopSelf(); return
+        }
+        val preview = JSONObject(previewJson)
+        val tunnelCidr = preview.getString("tunnel_address") // "10.66.66.3/24"
+        val mtuFromLink = preview.optInt("mtu", 1280)
+        val dnsArr = preview.optJSONArray("dns")
+
+        // 2. Build the VPN with what we learned; allow per-device MTU
+        //    override (SettingsManager) but cap at link MTU since the
+        //    SRTP encapsulation is tight.
+        val tunFdLocal: ParcelFileDescriptor = try {
+            val settings = SettingsManager.get(this)
+            val effMtu = minOf(settings.mtu.value, mtuFromLink)
+            val (addrIp, addrPrefix) = tunnelCidr.split("/").let {
+                if (it.size != 2) throw IllegalArgumentException("bad CIDR $tunnelCidr")
+                it[0] to it[1].toInt()
+            }
+            val builder = Builder()
+                .setSession(getString(R.string.app_name))
+                .setMtu(effMtu)
+                .addRoute("0.0.0.0", 1)
+                .addRoute("128.0.0.0", 1)
+                .addRoute("::", 0)
+                .addAddress(addrIp, addrPrefix)
+            if (dnsArr != null) {
+                for (i in 0 until dnsArr.length()) {
+                    runCatching { builder.addDnsServer(dnsArr.getString(i)) }
+                }
+            } else {
+                runCatching { builder.addDnsServer("1.1.1.1") }
+                runCatching { builder.addDnsServer("8.8.8.8") }
+            }
+            // Same self-exclusion + applyAppRouting as the legacy path.
+            runCatching { builder.addDisallowedApplication(packageName) }
+            applyAppRouting(
+                builder = builder,
+                mode = settings.routingMode.value,
+                selected = AppListStore.get(this).selected.value,
+                ownPackage = packageName,
+            )
+            log.info(LogSource.APP, "vk-turn-srtp: about to establish() VpnService (mtu=$effMtu addr=$tunnelCidr)")
+            builder.establish() ?: run {
+                log.error(LogSource.APP, "VpnService.Builder.establish() returned null")
+                teardown(); stopSelf(); return
+            }
+        } catch (t: Throwable) {
+            log.error(LogSource.APP, "vk-turn-srtp: VPN setup failed: ${t.message}")
+            controller.publishState(ConnectionState.Error(t.message ?: "VPN setup failed"))
+            teardown(); stopSelf(); return
+        }
+        tunFd = tunFdLocal
+
+        // 3. detachFd() — Go takes ownership.
+        val rawFd: Int = try {
+            tunFdLocal.detachFd()
+        } catch (t: Throwable) {
+            log.error(LogSource.APP, "vk-turn-srtp: detachFd failed: ${t.message}")
+            teardown(); stopSelf(); return
+        }
+        tunFd = null
+
+        try {
+            log.info(LogSource.APP, "vk-turn-srtp: about to ConnectVKTurnSRTP (fd=$rawFd)")
+            withContext(Dispatchers.IO) {
+                client.connectVKTurnSRTP(connStr, rawFd.toLong())
+            }
+            log.info(LogSource.APP, "vk-turn-srtp: tunnel up")
+        } catch (t: Throwable) {
+            log.error(LogSource.APP, "vk-turn-srtp: connectVKTurnSRTP failed: ${t.message}")
+            controller.publishState(ConnectionState.Error(t.message ?: "vk-turn-srtp connect failed"))
+            teardown(); stopSelf(); return
+        }
+
+        // 4. Stats tick-loop, identical to legacy.
         startedAt = System.currentTimeMillis()
         controller.publishState(ConnectionState.On(startedAt))
         statsJob = scope.launch {

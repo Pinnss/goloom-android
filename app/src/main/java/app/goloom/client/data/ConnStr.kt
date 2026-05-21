@@ -42,6 +42,14 @@ data class ConnStr(
     val isVKCalls: Boolean
         get() = transport == "vk-calls"
 
+    /**
+     * Connstr — это vkturnproxy:// link (vk-turn-srtp transport).
+     * Go SDK сам декодирует payload на стороне Connect; Kotlin-сторона
+     * хранит raw и при подключении вызывает Client.connectVKTurnSRTP.
+     */
+    val isVKTurnProxyLink: Boolean
+        get() = raw.trim().startsWith("vkturnproxy://")
+
     /** Минимально валиден ли встроенный WG-конфиг. */
     val hasWireGuard: Boolean
         get() = !wgClientPrivate.isNullOrEmpty() &&
@@ -77,6 +85,7 @@ data class ConnStr(
     /** Имя профиля по умолчанию — на основе тега или хоста встречи. */
     fun suggestedProfileName(): String {
         if (!tag.isNullOrBlank()) return tag.replaceFirstChar { it.uppercase() }
+        if (isVKTurnProxyLink) return "VK TURN SRTP"
         val host = runCatching {
             java.net.URI(meeting).host?.takeIf { it.isNotBlank() }
         }.getOrNull()
@@ -97,10 +106,27 @@ object ConnStrParser {
      * не кидает исключений, возвращает [Result.Error] с человеческим
      * сообщением. Триммит whitespace, чувствителен к scheme.
      */
+    private const val VK_TURN_PROXY_SCHEME = "vkturnproxy://"
+
     fun parse(input: String): Result {
         val trimmed = input.trim()
+        // vkturnproxy://... links are decoded inside the Go SDK at
+        // connect time (via Client.previewVKTurnProxyLink and
+        // Client.connectVKTurnSRTP). On the Kotlin side we just
+        // stash the raw string + flag the transport so the
+        // profile store / VpnService dispatcher knows which path
+        // to take.
+        if (trimmed.startsWith(VK_TURN_PROXY_SCHEME)) {
+            return Result.Ok(
+                ConnStr(
+                    meeting = "", // not used by the SRTP path
+                    transport = "vk-turn-srtp",
+                    raw = trimmed,
+                )
+            )
+        }
         if (!trimmed.startsWith(SCHEME)) {
-            return Result.Error("Expected $SCHEME prefix")
+            return Result.Error("Expected $SCHEME or $VK_TURN_PROXY_SCHEME prefix")
         }
         val payload = trimmed.removePrefix(SCHEME)
         val jsonBytes = try {
