@@ -1,6 +1,11 @@
 package app.goloom.client.tunnel
 
 import android.annotation.SuppressLint
+import android.webkit.ConsoleMessage
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.Box
@@ -25,12 +30,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import app.goloom.client.data.LogSource
+import app.goloom.client.data.LogStore
 import kotlinx.coroutines.delay
 
 /**
@@ -64,6 +72,8 @@ fun CaptchaWebViewDialog(
 ) {
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var dismissed by remember { mutableStateOf(false) }
+    val appContext = LocalContext.current
+    val log = remember(appContext) { LogStore.get(appContext) }
 
     fun dismissOnce() {
         if (!dismissed) {
@@ -160,9 +170,62 @@ fun CaptchaWebViewDialog(
                                     favicon: android.graphics.Bitmap?,
                                 ) {
                                     super.onPageStarted(view, url, favicon)
+                                    android.util.Log.i(TAG_DLG, "page started: ${url?.take(120)}")
                                     // Anti-bot маскировка ДО загрузки VK SDK.
                                     // Лифтнуто из tun/CaptchaWebViewDialog.kt:285.
                                     view?.evaluateJavascript(ANTI_BOT_JS) { _ -> }
+                                }
+
+                                override fun onPageFinished(view: WebView?, url: String?) {
+                                    super.onPageFinished(view, url)
+                                    // Тело страницы: пустой body здесь = VK отдал
+                                    // blank-страницу (потраченная сессия и т.п.) —
+                                    // главный симптом «белого экрана». Логируем
+                                    // размер/число детей/первые символы текста.
+                                    view?.evaluateJavascript(
+                                        "JSON.stringify({len:document.documentElement.outerHTML.length," +
+                                            "kids:document.body?document.body.children.length:-1," +
+                                            "txt:((document.body&&document.body.innerText)||'').slice(0,80)})",
+                                    ) { res ->
+                                        val msg = "[Captcha WV] finished ${url?.take(80)} dom=${res?.take(200)}"
+                                        android.util.Log.i(TAG_DLG, msg)
+                                        log.info(LogSource.APP, msg)
+                                    }
+                                }
+
+                                override fun onReceivedError(
+                                    view: WebView?,
+                                    request: WebResourceRequest?,
+                                    error: WebResourceError?,
+                                ) {
+                                    super.onReceivedError(view, request, error)
+                                    val main = request?.isForMainFrame == true
+                                    val msg = "[Captcha WV] error mainFrame=$main code=${error?.errorCode} " +
+                                        "desc=${error?.description} url=${request?.url}"
+                                    android.util.Log.w(TAG_DLG, msg)
+                                    log.warn(LogSource.APP, msg)
+                                }
+
+                                override fun onReceivedHttpError(
+                                    view: WebView?,
+                                    request: WebResourceRequest?,
+                                    errorResponse: WebResourceResponse?,
+                                ) {
+                                    super.onReceivedHttpError(view, request, errorResponse)
+                                    val msg = "[Captcha WV] http ${errorResponse?.statusCode} " +
+                                        "${errorResponse?.reasonPhrase} url=${request?.url}"
+                                    android.util.Log.w(TAG_DLG, msg)
+                                    log.warn(LogSource.APP, msg)
+                                }
+                            }
+
+                            webChromeClient = object : WebChromeClient() {
+                                override fun onConsoleMessage(msg: ConsoleMessage?): Boolean {
+                                    val line = "[Captcha JS] [${msg?.messageLevel()}] ${msg?.message()} " +
+                                        "(${msg?.sourceId()}:${msg?.lineNumber()})"
+                                    android.util.Log.i(TAG_DLG, line)
+                                    log.info(LogSource.APP, line)
+                                    return true
                                 }
                             }
 
@@ -182,6 +245,8 @@ fun CaptchaWebViewDialog(
 }
 
 private fun Modifier.fillMaxFromInstance(): Modifier = this.fillMaxWidth().fillMaxHeight()
+
+private const val TAG_DLG = "CaptchaWV"
 
 // Мобильный UA — на мобильной сети VK ожидает мобильное устройство;
 // desktop UA + IP мобильного оператора был сильным bot-маркером в
