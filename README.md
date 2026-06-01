@@ -1,6 +1,6 @@
 # Goloom for Android
 
-Android client for the **Goloom** VPN protocol — tunnels traffic inside a Telemost (Yandex's WebRTC video) media stream and unwraps it on a VPS into kernel WireGuard.
+Android client for the **Goloom** VPN protocol — tunnels WireGuard inside a video-conferencing media stream (Yandex Telemost, VK Calls, or VK's TURN relay) and unwraps it on a VPS into kernel WireGuard. Profiles import from a `goloom://` connstr/QR (SFU transports) or a `vkturnproxy://` link/QR (VK TURN SRTP — the recommended path).
 
 ## Build
 

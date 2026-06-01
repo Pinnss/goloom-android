@@ -123,7 +123,7 @@ android {
 }
 
 dependencies {
-    // Goloom mobile bridge (.aar, не коммитится в git — см. HANDOFF.md).
+    // Goloom mobile bridge (.aar, не коммитится в git — см. README.md).
     // Перед сборкой положить файл в app/libs/goloom.aar.
     implementation(files("libs/goloom.aar"))
 

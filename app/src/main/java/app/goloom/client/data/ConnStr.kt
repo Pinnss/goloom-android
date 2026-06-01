@@ -5,7 +5,7 @@ import org.json.JSONObject
 
 /**
  * Парсер `goloom://...` connection string. Формат — base64url(JSON).
- * Источник истины — `internal/connstr/connstr.go` в репо goloom-poc.
+ * Источник истины — `internal/connstr/connstr.go` в репо goloom-server.
  *
  * При расхождении формата — ВНАЧАЛЕ обновлять Go-сторону, потом этот файл,
  * чтобы старые ссылки оставались парсабельными (новые поля помечать как
