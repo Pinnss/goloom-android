@@ -138,6 +138,7 @@
     <string name="approuting_section_user">User apps</string>
     <string name="approuting_section_system">System apps</string>
     <string name="approuting_show_system">Show system apps</string>
+    <string name="approuting_empty">No apps found</string>
 
     <!-- Common -->
     <string name="action_cancel">Cancel</string>

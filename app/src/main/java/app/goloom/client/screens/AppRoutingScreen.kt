@@ -20,20 +20,22 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.platform.LocalContext
@@ -67,19 +69,25 @@ fun AppRoutingScreen(onBack: () -> Unit) {
     val selected by store.selected.collectAsState()
 
     var apps by remember { mutableStateOf<List<AppListEntry>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
     var query by remember { mutableStateOf("") }
     var showSystem by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        apps = withContext(Dispatchers.IO) { store.loadInstalledApps() }
+        apps = withContext(Dispatchers.IO) {
+            runCatching { store.loadInstalledApps() }.getOrDefault(emptyList())
+        }
+        loading = false
     }
 
-    val filtered by remember(apps, query, showSystem) {
-        derivedStateOf {
-            apps
-                .filter { showSystem || !it.isSystem }
-                .filter { it.label.contains(query, ignoreCase = true) || it.packageName.contains(query, ignoreCase = true) }
-        }
+    val filtered = remember(apps, query, showSystem) {
+        apps
+            .filter { showSystem || !it.isSystem }
+            .filter {
+                query.isBlank() ||
+                    it.label.contains(query, ignoreCase = true) ||
+                    it.packageName.contains(query, ignoreCase = true)
+            }
     }
 
     Column(
@@ -156,16 +164,37 @@ fun AppRoutingScreen(onBack: () -> Unit) {
 
         // App list
         val listEnabled = mode != SettingsManager.RoutingMode.All
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp),
-        ) {
-            items(filtered, key = { it.packageName }) { entry ->
-                AppRow(
-                    entry = entry,
-                    selected = entry.packageName in selected,
-                    enabled = listEnabled,
-                    onToggle = { store.toggle(entry.packageName) },
+        when {
+            loading -> Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(color = G.text)
+            }
+
+            filtered.isEmpty() -> Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = stringResource(R.string.approuting_empty),
+                    color = G.textMute,
+                    style = TextStyle(fontSize = 13.sp),
                 )
+            }
+
+            else -> LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp),
+            ) {
+                items(filtered, key = { it.packageName }) { entry ->
+                    AppRow(
+                        store = store,
+                        entry = entry,
+                        selected = entry.packageName in selected,
+                        enabled = listEnabled,
+                        onToggle = { store.toggle(entry.packageName) },
+                    )
+                }
             }
         }
     }
@@ -202,6 +231,7 @@ private fun ModeRow(
 
 @Composable
 private fun AppRow(
+    store: AppListStore,
     entry: AppListEntry,
     selected: Boolean,
     enabled: Boolean,
@@ -219,22 +249,22 @@ private fun AppRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        val icon = entry.icon
-        if (icon != null) {
-            val bmp = remember(entry.packageName) {
-                runCatching { icon.toBitmap(width = 64, height = 64) }.getOrNull()
+        // Иконка грузится лениво на IO — только для реально видимых строк
+        // (LazyColumn композит только их), а не для всех установленных приложений.
+        val iconBmp by produceState<ImageBitmap?>(initialValue = null, key1 = entry.packageName) {
+            value = withContext(Dispatchers.IO) {
+                runCatching {
+                    store.loadIcon(entry.packageName)?.toBitmap(width = 64, height = 64)?.asImageBitmap()
+                }.getOrNull()
             }
-            if (bmp != null) {
-                Box(modifier = Modifier.size(36.dp)) {
-                    androidx.compose.foundation.Image(
-                        painter = BitmapPainter(bmp.asImageBitmap()),
-                        contentDescription = null,
-                        modifier = Modifier.size(36.dp),
-                    )
-                }
-            } else {
-                Box(modifier = Modifier.size(36.dp).background(G.bgElev3))
-            }
+        }
+        val bmp = iconBmp
+        if (bmp != null) {
+            androidx.compose.foundation.Image(
+                painter = BitmapPainter(bmp),
+                contentDescription = null,
+                modifier = Modifier.size(36.dp),
+            )
         } else {
             Box(modifier = Modifier.size(36.dp).background(G.bgElev3))
         }

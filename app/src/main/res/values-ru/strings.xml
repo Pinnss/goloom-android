@@ -138,6 +138,7 @@
     <string name="approuting_section_user">Пользовательские</string>
     <string name="approuting_section_system">Системные</string>
     <string name="approuting_show_system">Показать системные</string>
+    <string name="approuting_empty">Приложения не найдены</string>
 
     <!-- Common -->
     <string name="action_cancel">Отмена</string>

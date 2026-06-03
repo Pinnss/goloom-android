@@ -16,7 +16,6 @@ import kotlinx.coroutines.flow.asStateFlow
 data class AppListEntry(
     val packageName: String,
     val label: String,
-    val icon: Drawable?,
     val isSystem: Boolean,
 )
 
@@ -57,32 +56,42 @@ class AppListStore private constructor(context: Context) {
     }
 
     /**
-     * Сканирует PackageManager и возвращает список приложений.
+     * Сканирует PackageManager и возвращает список приложений — БЕЗ иконок.
+     * Иконки грузятся лениво через [loadIcon] по мере отображения строк: eager-
+     * загрузка сотен Drawable блокировала список на несколько секунд, из-за чего
+     * он казался пустым, пока не дочитается (отсюда баг «список появляется только
+     * после ввода в поиск»). Теперь метаданные строятся быстро и список виден сразу.
      * Это блокирующий вызов — звать только из IO/Default диспетчера.
-     * Своё приложение (BuildConfig.APPLICATION_ID) исключаем — не имеет смысла
-     * туннелировать самих себя.
+     * Своё приложение исключаем — нет смысла туннелировать самих себя.
      */
     fun loadInstalledApps(): List<AppListEntry> {
         val pm = appContext.packageManager
         val ownPkg = appContext.packageName
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         val launchable = pm.queryIntentActivities(intent, 0)
-            .map { it.activityInfo.applicationInfo }
-            .associateBy { it.packageName }
+            .mapTo(HashSet()) { it.activityInfo.packageName }
 
         val all = pm.getInstalledApplications(0)
             .filter { it.packageName != ownPkg }
             .map { ai ->
                 AppListEntry(
                     packageName = ai.packageName,
-                    label = pm.getApplicationLabel(ai).toString(),
-                    icon = runCatching { pm.getApplicationIcon(ai) }.getOrNull(),
+                    label = runCatching { pm.getApplicationLabel(ai).toString() }
+                        .getOrDefault(ai.packageName),
                     isSystem = (ai.flags and ApplicationInfo.FLAG_SYSTEM) != 0
                             && ai.packageName !in launchable,
                 )
             }
         return all.sortedWith(compareBy({ it.isSystem }, { it.label.lowercase() }))
     }
+
+    /**
+     * Лениво грузит иконку одного приложения. Блокирующий вызов — звать из IO.
+     * null, если иконка недоступна (пакет удалён и т.п.).
+     */
+    fun loadIcon(pkg: String): Drawable? = runCatching {
+        appContext.packageManager.getApplicationIcon(pkg)
+    }.getOrNull()
 
     // ─── private ──────────────────────────────────────────────
 
