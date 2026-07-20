@@ -174,6 +174,12 @@ fun CaptchaWebViewDialog(
                                     // Anti-bot маскировка ДО загрузки VK SDK.
                                     // Лифтнуто из tun/CaptchaWebViewDialog.kt:285.
                                     view?.evaluateJavascript(ANTI_BOT_JS) { _ -> }
+                                    // Перехват success_token. Страница теперь
+                                    // грузится с настоящего id.vk.ru, без нашего
+                                    // прокси, поэтому ответ captchaNotRobot.check
+                                    // видит только WebView — хук обязан встать
+                                    // ДО того, как VK SDK создаст свои XHR.
+                                    view?.evaluateJavascript(TOKEN_HOOK_JS) { _ -> }
                                 }
 
                                 override fun onPageFinished(view: WebView?, url: String?) {
@@ -229,6 +235,7 @@ fun CaptchaWebViewDialog(
                                 }
                             }
 
+                            addJavascriptInterface(CaptchaTokenBridge(log), "GoloomCaptcha")
                             loadUrl(url)
                             webViewRef = this
                         }
@@ -246,7 +253,142 @@ fun CaptchaWebViewDialog(
 
 private fun Modifier.fillMaxFromInstance(): Modifier = this.fillMaxWidth().fillMaxHeight()
 
+/**
+ * JS-мост: страница VK отдаёт сюда success_token, вытащенный из ответа
+ * captchaNotRobot.check. Дальше [CaptchaController] передаёт его в Go и
+ * гасит dialog.
+ *
+ * Раньше токен ловил Go-прокси на localhost, но именно этот прокси и
+ * ломал капчу (CORS для adFp + чужой JA3), поэтому теперь страница
+ * грузится напрямую с id.vk.ru, а токен возвращает native.
+ */
+private class CaptchaTokenBridge(private val log: LogStore) {
+    @android.webkit.JavascriptInterface
+    fun submitToken(token: String?) {
+        val t = token.orEmpty()
+        if (t.isBlank()) return
+        android.util.Log.i(TAG_DLG, "[Captcha WV] success_token captured (${t.length} chars)")
+        log.info(LogSource.APP, "[Captcha WV] success_token captured (${t.length} chars)")
+        CaptchaController.submitToken(t)
+    }
+
+    /**
+     * Отпечаток со страницы captcha: `device` из componentDone + `browser_fp`
+     * из check. Уходит в пул на Go-стороне, чтобы следующий коннект прошёл
+     * captcha автоматически, без показа WebView.
+     */
+    @android.webkit.JavascriptInterface
+    fun submitProfile(device: String?, browserFp: String?, userAgent: String?) {
+        val d = device.orEmpty()
+        val b = browserFp.orEmpty()
+        if (d.isBlank() || b.isBlank()) return
+        log.info(LogSource.APP, "[Captcha WV] fingerprint captured (device=${d.length}B browser_fp=${b.length}B)")
+        CaptchaController.submitProfile(d, b, userAgent.orEmpty())
+    }
+}
+
 private const val TAG_DLG = "CaptchaWV"
+
+// Хук XHR/fetch: ждём ответ captchaNotRobot.check и выдёргиваем из него
+// response.success_token. Ставится в onPageStarted, до скриптов VK.
+private val TOKEN_HOOK_JS = """
+(function() {
+  if (window.__goloomTokenHook) return;
+  window.__goloomTokenHook = true;
+  function post(t) {
+    try { if (t && window.GoloomCaptcha) window.GoloomCaptcha.submitToken(t); } catch (e) {}
+  }
+  function scan(txt) {
+    try {
+      var d = JSON.parse(txt);
+      if (d && d.response && d.response.success_token) post(d.response.success_token);
+    } catch (e) {}
+  }
+  function isCheck(u) { return typeof u === 'string' && u.indexOf('captchaNotRobot.check') !== -1; }
+  function isFpCall(u) {
+    return typeof u === 'string' &&
+      (u.indexOf('captchaNotRobot.check') !== -1 || u.indexOf('captchaNotRobot.componentDone') !== -1);
+  }
+
+  // Отпечаток VK раскладывает по ДВУМ запросам: device приезжает в
+  // componentDone, browser_fp — в check. Go-сторона отбрасывает профиль с
+  // любым пустым полем, поэтому копим половинки и шлём одним вызовом.
+  var fpDevice = '', fpBrowser = '', sentDevice = '', sentBrowser = '';
+  function field(body, name) {
+    if (typeof body !== 'string') return '';
+    var m = body.match(new RegExp('(?:^|&)' + name + '=([^&]*)'));
+    if (!m || !m[1]) return '';
+    try { return decodeURIComponent(m[1].replace(/\+/g, ' ')); } catch (e) { return ''; }
+  }
+  function harvest(body) {
+    var d = field(body, 'device');
+    var b = field(body, 'browser_fp');
+    if (d) fpDevice = d;
+    if (b) fpBrowser = b;
+    if (!fpDevice || !fpBrowser) return;
+    // Накопители НЕ обнуляем: componentDone (с device) приходит один раз на
+    // инициализацию виджета, а check (с browser_fp) — на каждую попытку.
+    // Сбросив device после первой отправки, мы бы потеряли пару от повторной,
+    // УСПЕШНОЙ попытки и оставили в пуле отпечаток той, что VK забраковал.
+    // Вместо этого дедуплицируем по уже отправленной паре.
+    if (fpDevice === sentDevice && fpBrowser === sentBrowser) return;
+    try {
+      if (window.GoloomCaptcha && window.GoloomCaptcha.submitProfile) {
+        window.GoloomCaptcha.submitProfile(fpDevice, fpBrowser, navigator.userAgent);
+        sentDevice = fpDevice; sentBrowser = fpBrowser;
+      }
+    } catch (e) {}
+  }
+
+  try {
+    var ox = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function(m, u) { this.__gu = u; return ox.apply(this, arguments); };
+    var os = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.send = function(body) {
+      var x = this;
+      try {
+        if (isFpCall(String(x.__gu))) harvest(body);
+        x.addEventListener('load', function() {
+          // try/catch ОБЯЗАН быть внутри обработчика: внешний уже завершился к
+          // моменту события, а responseText кидает InvalidStateError, если
+          // responseType не '' и не 'text'. Исключение из обработчика браузер
+          // глотает — токен потерялся бы совершенно молча, и Go ждал бы его
+          // до двухминутного таймаута.
+          try {
+            if (!isCheck(String(x.__gu))) return;
+            var rt = x.responseType;
+            var payload = (rt === '' || rt === 'text') ? x.responseText : x.response;
+            if (typeof payload === 'string') {
+              scan(payload);
+            } else if (payload && payload.response && payload.response.success_token) {
+              post(payload.response.success_token);
+            }
+          } catch (e) {}
+        });
+      } catch (e) {}
+      return os.apply(this, arguments);
+    };
+  } catch (e) {}
+  try {
+    var of = window.fetch;
+    if (of) {
+      window.fetch = function() {
+        var a = arguments[0];
+        var u = (a && typeof a === 'object' && a.url) ? a.url : a;
+        var init = arguments[1];
+        try {
+          if (isFpCall(u) && init && typeof init.body === 'string') harvest(init.body);
+        } catch (e) {}
+        var p = of.apply(this, arguments);
+        if (isCheck(u)) {
+          try { p.then(function(r) { r.clone().text().then(scan); }); } catch (e) {}
+        }
+        return p;
+      };
+    }
+  } catch (e) {}
+})();
+""".trimIndent()
 
 // Мобильный UA — на мобильной сети VK ожидает мобильное устройство;
 // desktop UA + IP мобильного оператора был сильным bot-маркером в

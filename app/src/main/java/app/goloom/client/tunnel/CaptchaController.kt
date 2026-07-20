@@ -40,6 +40,58 @@ object CaptchaController {
     }
 
     /**
+     * Обработчик success_token'а. Ставит [GoloomVpnService] — он владеет
+     * Go-клиентом и дёргает у него submitVKCaptchaToken().
+     *
+     * Нужен потому, что капча теперь грузится с настоящего id.vk.ru, а не
+     * с localhost-прокси: Go больше не видит ответ captchaNotRobot.check и
+     * узнаёт токен только от native.
+     */
+    @Volatile
+    var onToken: ((String) -> Unit)? = null
+
+    /**
+     * Обработчик отпечатка (device + browser_fp + UA), снятого со страницы
+     * captcha. Ставит [GoloomVpnService]; уходит в пул на Go-стороне, чтобы
+     * следующий коннект прошёл captcha без UI.
+     */
+    @Volatile
+    var onProfile: ((String, String, String) -> Unit)? = null
+
+    /** Вызывается из JS-моста в [CaptchaWebViewDialog]. */
+    fun submitProfile(device: String, browserFp: String, userAgent: String) {
+        val handler = onProfile
+        if (handler == null) {
+            // Пропущенная регистрация здесь не ломает подключение (captcha всё
+            // равно решается вручную), но пул молча остаётся пустым навсегда —
+            // тот самый симптом «0 profiles после десятков решений». Без лога
+            // это неотличимо от «VK не отдаёт отпечаток».
+            android.util.Log.w("CaptchaCtl", "fingerprint dropped: no onProfile handler registered")
+            return
+        }
+        handler(device, browserFp, userAgent)
+    }
+
+    /**
+     * Вызывается из JS-моста в [CaptchaWebViewDialog], когда со страницы
+     * VK прилетел success_token. Токен уходит в Go, dialog закрывается.
+     */
+    fun submitToken(token: String) {
+        if (token.isBlank()) return
+        val handler = onToken
+        if (handler == null) {
+            // Каждый connect-путь обязан выставить onToken рядом со своим
+            // setBrowserLauncher. Если забыть — капча решается, токен ловится,
+            // а Go молча ждёт до таймаута; лог делает промах очевидным.
+            android.util.Log.w("CaptchaCtl", "success_token dropped: no onToken handler registered")
+            dismiss()
+            return
+        }
+        handler(token)
+        dismiss()
+    }
+
+    /**
      * Вызывается когда WebView закрылся — либо пользователь решил
      * captcha (в этом случае Go-side proxy уже захватил token и
      * solveCaptchaViaProxy вернёт), либо пользователь свайпнул /

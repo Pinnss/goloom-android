@@ -257,6 +257,18 @@ class GoloomVpnService : VpnService() {
                             CaptchaController.present(url)
                         }
                     })
+                    // Капча грузится с настоящего id.vk.ru (не с localhost-
+                    // прокси), поэтому success_token видит только WebView —
+                    // прокидываем его обратно в Go.
+                    CaptchaController.onToken = { token ->
+                        log.info(LogSource.APP, "captcha: submitting success_token to Go (${token.length} chars)")
+                        c.submitVKCaptchaToken(token)
+                    }
+                    // Отпечаток решённой captcha → пул: следующий коннект
+                    // проходит автоматически, без показа WebView.
+                    CaptchaController.onProfile = { device, browserFp, ua ->
+                        c.submitVKCaptchaProfile(device, browserFp, ua)
+                    }
                     val poolDir = java.io.File(filesDir, "vkcalls").apply { mkdirs() }
                     val poolPath = java.io.File(poolDir, "profiles.json").absolutePath
                     c.setVKProfileStorePath(poolPath)
@@ -445,6 +457,19 @@ class GoloomVpnService : VpnService() {
                         CaptchaController.present(url)
                     }
                 })
+                // Обязательно вместе с launcher'ом: капча грузится с
+                // настоящего id.vk.ru, поэтому success_token видит только
+                // WebView и его надо вернуть в Go. Без этого капча решается,
+                // но solver ждёт токен до таймаута.
+                CaptchaController.onToken = { token ->
+                    log.info(LogSource.APP, "captcha: submitting success_token to Go (${token.length} chars)")
+                    c.submitVKCaptchaToken(token)
+                }
+                // Отпечаток решённой captcha → пул: следующий коннект
+                // проходит автоматически, без показа WebView.
+                CaptchaController.onProfile = { device, browserFp, ua ->
+                    c.submitVKCaptchaProfile(device, browserFp, ua)
+                }
                 val poolDir = java.io.File(filesDir, "vkcalls").apply { mkdirs() }
                 val poolPath = java.io.File(poolDir, "profiles.json").absolutePath
                 c.setVKProfileStorePath(poolPath)
@@ -562,6 +587,14 @@ class GoloomVpnService : VpnService() {
 
         runCatching { goloomClient?.disconnect() }
         goloomClient = null
+
+        // Колбэки captcha замыкают на себе gomobile-Client, а CaptchaController —
+        // process-wide singleton. Не обнулив их, мы (а) держим Go-объект и его
+        // ProfileStore живыми после каждого отключения и (б) рискуем увести
+        // токен от ещё открытого WebView в уже мёртвый Client, где он молча
+        // пропадёт. Теперь такой поздний токен даст warning в логе.
+        CaptchaController.onToken = null
+        CaptchaController.onProfile = null
 
         // tunFd закрываем ТОЛЬКО если Go ещё не забрал его (т.е. AdoptTun
         // не дошёл или упал). Иначе будет double-close с UB.
