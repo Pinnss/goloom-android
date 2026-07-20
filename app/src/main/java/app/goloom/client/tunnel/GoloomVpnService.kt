@@ -260,9 +260,9 @@ class GoloomVpnService : VpnService() {
                     // Капча грузится с настоящего id.vk.ru (не с localhost-
                     // прокси), поэтому success_token видит только WebView —
                     // прокидываем его обратно в Go.
-                    CaptchaController.onToken = { token ->
+                    CaptchaController.onToken = { token, pageUrl ->
                         log.info(LogSource.APP, "captcha: submitting success_token to Go (${token.length} chars)")
-                        c.submitVKCaptchaToken(token)
+                        c.submitVKCaptchaToken(token, pageUrl)
                     }
                     // Отпечаток решённой captcha → пул: следующий коннект
                     // проходит автоматически, без показа WebView.
@@ -461,9 +461,9 @@ class GoloomVpnService : VpnService() {
                 // настоящего id.vk.ru, поэтому success_token видит только
                 // WebView и его надо вернуть в Go. Без этого капча решается,
                 // но solver ждёт токен до таймаута.
-                CaptchaController.onToken = { token ->
+                CaptchaController.onToken = { token, pageUrl ->
                     log.info(LogSource.APP, "captcha: submitting success_token to Go (${token.length} chars)")
-                    c.submitVKCaptchaToken(token)
+                    c.submitVKCaptchaToken(token, pageUrl)
                 }
                 // Отпечаток решённой captcha → пул: следующий коннект
                 // проходит автоматически, без показа WebView.

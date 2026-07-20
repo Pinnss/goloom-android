@@ -48,7 +48,7 @@ object CaptchaController {
      * узнаёт токен только от native.
      */
     @Volatile
-    var onToken: ((String) -> Unit)? = null
+    var onToken: ((token: String, pageUrl: String) -> Unit)? = null
 
     /**
      * Обработчик отпечатка (device + browser_fp + UA), снятого со страницы
@@ -76,7 +76,7 @@ object CaptchaController {
      * Вызывается из JS-моста в [CaptchaWebViewDialog], когда со страницы
      * VK прилетел success_token. Токен уходит в Go, dialog закрывается.
      */
-    fun submitToken(token: String) {
+    fun submitToken(token: String, pageUrl: String) {
         if (token.isBlank()) return
         val handler = onToken
         if (handler == null) {
@@ -87,7 +87,7 @@ object CaptchaController {
             dismiss()
             return
         }
-        handler(token)
+        handler(token, pageUrl)
         dismiss()
     }
 

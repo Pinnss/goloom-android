@@ -264,12 +264,14 @@ private fun Modifier.fillMaxFromInstance(): Modifier = this.fillMaxWidth().fillM
  */
 private class CaptchaTokenBridge(private val log: LogStore) {
     @android.webkit.JavascriptInterface
-    fun submitToken(token: String?) {
+    fun submitToken(token: String?, pageUrl: String?) {
         val t = token.orEmpty()
         if (t.isBlank()) return
         android.util.Log.i(TAG_DLG, "[Captcha WV] success_token captured (${t.length} chars)")
         log.info(LogSource.APP, "[Captcha WV] success_token captured (${t.length} chars)")
-        CaptchaController.submitToken(t)
+        // pageUrl несёт session_token — Go по нему отличает токен текущей
+        // попытки от токена уже протухшего окна captcha.
+        CaptchaController.submitToken(t, pageUrl.orEmpty())
     }
 
     /**
@@ -296,7 +298,9 @@ private val TOKEN_HOOK_JS = """
   if (window.__goloomTokenHook) return;
   window.__goloomTokenHook = true;
   function post(t) {
-    try { if (t && window.GoloomCaptcha) window.GoloomCaptcha.submitToken(t); } catch (e) {}
+    // location.href несёт session_token — по нему Go отсекает токен, снятый с
+    // уже протухшего окна captcha, чтобы он не «решил» следующую попытку.
+    try { if (t && window.GoloomCaptcha) window.GoloomCaptcha.submitToken(t, location.href); } catch (e) {}
   }
   function scan(txt) {
     try {
