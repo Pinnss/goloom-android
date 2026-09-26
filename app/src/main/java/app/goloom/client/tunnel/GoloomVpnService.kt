@@ -5,6 +5,8 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.os.Build
 import android.os.IBinder
@@ -405,10 +407,48 @@ class GoloomVpnService : VpnService() {
         // 4. Tick-loop публикует stats каждую секунду.
         startedAt = System.currentTimeMillis()
         controller.publishState(ConnectionState.On(startedAt))
+        nudgeNetworkValidation()
         statsJob = scope.launch {
             while (isActive) {
                 publishStats()
                 delay(1_000)
+            }
+        }
+    }
+
+    /**
+     * Просит систему перепроверить, есть ли в нашем VPN интернет.
+     *
+     * Android валидирует сеть сразу после establish(), отправляя проб в
+     * generate_204. Туннель в этот момент ещё поднимается: WireGuard делает
+     * рукопожатие, первый DNS-запрос идёт через SFU. Проб не успевает, сеть
+     * получает пометку "без интернета" и повторную проверку система назначает
+     * через десятки секунд. Пользователь при этом видит странное: браузер
+     * работает, а приложения, которые смотрят на NET_CAPABILITY_VALIDATED
+     * (спидтесты, мессенджеры), считают, что сети нет, пока что-нибудь не
+     * прогреет путь.
+     *
+     * reportNetworkConnectivity(network, true) — штатный способ сказать
+     * системе "проверь ещё раз". Зовём несколько раз с паузами: туннель может
+     * быть готов не сразу, а лишний вызов ничего не стоит.
+     */
+    private fun nudgeNetworkValidation() {
+        val cm = getSystemService(ConnectivityManager::class.java) ?: return
+        scope.launch {
+            repeat(NETWORK_REVALIDATE_TRIES) { attempt ->
+                delay(if (attempt == 0) 1_500 else 3_000)
+                val vpn = cm.allNetworks.firstOrNull { net ->
+                    cm.getNetworkCapabilities(net)
+                        ?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
+                } ?: return@repeat
+                val validated = cm.getNetworkCapabilities(vpn)
+                    ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+                if (validated) {
+                    LogStore.get(this@GoloomVpnService).info(LogSource.APP, "VPN network validated by the system")
+                    return@launch
+                }
+                runCatching { cm.reportNetworkConnectivity(vpn, true) }
+                    .onFailure { LogStore.get(this@GoloomVpnService).warn(LogSource.APP, "reportNetworkConnectivity: ${it.message}") }
             }
         }
     }
@@ -674,6 +714,9 @@ class GoloomVpnService : VpnService() {
         private const val LISTEN_ADDR = "127.0.0.1:51820"
         private const val TUNNEL_NAME = "goloom"
         private const val CHANNEL_ID = "goloom_status"
+        /** Сколько раз просим систему перепроверить валидацию VPN-сети. */
+        private const val NETWORK_REVALIDATE_TRIES = 5
+
         private const val NOTIF_ID = 1001
     }
 }
