@@ -5,7 +5,8 @@ import app.goloom.client.data.ConnStr
 import app.goloom.client.data.ConnStrParser
 
 /**
- * Извлекает `goloom://...` из системного VIEW-Intent (deep link).
+ * Извлекает ссылку профиля из системного VIEW-Intent (deep link):
+ * `goloom://...` для SFU-профилей и `vkturnproxy://...` для vk-turn-srtp.
  * Возвращает null, если intent не deep link или ссылка невалидна.
  */
 object DeepLink {

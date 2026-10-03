@@ -68,6 +68,10 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="goloom" />
+                <!-- vk-turn-srtp profiles arrive as vkturnproxy://import?data=…,
+                     which the admin panel and the QR generator emit. Without
+                     this the only way to add one was pasting the link by hand. -->
+                <data android:scheme="vkturnproxy" />
             </intent-filter>
         </activity>
 
