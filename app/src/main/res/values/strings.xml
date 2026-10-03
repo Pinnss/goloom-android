@@ -158,6 +158,13 @@
     <string name="notif_running">Goloom is running</string>
     <string name="notif_running_sub">%1$s · %2$s</string>
     <string name="notif_action_disconnect">Disconnect</string>
+    <string name="notif_expiry_channel_name">Reconnect needed</string>
+    <string name="notif_expiry_channel_desc">Warns before the VK session expires and the tunnel stops</string>
+    <string name="notif_expiry_soon_title">Reconnect soon</string>
+    <string name="notif_expiry_soon_body">The VK session ends in about %1$d min. Reconnect when convenient — the tunnel will stop otherwise.</string>
+    <string name="notif_expired_title">Reconnect needed</string>
+    <string name="notif_expired_body">The VK session has expired, so the tunnel can no longer carry traffic. Reconnect to sign in again.</string>
+    <string name="notif_action_reconnect">Reconnect</string>
 
     <!-- Errors -->
     <string name="error_no_aar">Goloom SDK is missing — rebuild app/libs/goloom.aar</string>

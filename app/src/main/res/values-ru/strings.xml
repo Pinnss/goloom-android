@@ -158,6 +158,13 @@
     <string name="notif_running">Goloom is running</string>
     <string name="notif_running_sub">%1$s · %2$s</string>
     <string name="notif_action_disconnect">Отключить</string>
+    <string name="notif_expiry_channel_name">Нужно переподключение</string>
+    <string name="notif_expiry_channel_desc">Предупреждает до того, как сессия VK истечёт и туннель остановится</string>
+    <string name="notif_expiry_soon_title">Скоро понадобится переподключение</string>
+    <string name="notif_expiry_soon_body">Сессия VK закончится примерно через %1$d мин. Переподключитесь, когда будет удобно, — иначе туннель остановится.</string>
+    <string name="notif_expired_title">Нужно переподключение</string>
+    <string name="notif_expired_body">Сессия VK истекла, туннель больше не передаёт трафик. Переподключитесь, чтобы авторизоваться заново.</string>
+    <string name="notif_action_reconnect">Переподключить</string>
 
     <!-- Errors -->
     <string name="error_no_aar">Не подключён Goloom SDK — пересобери app/libs/goloom.aar</string>

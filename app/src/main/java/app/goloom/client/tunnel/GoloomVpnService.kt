@@ -77,6 +77,12 @@ class GoloomVpnService : VpnService() {
     private var tunFd: ParcelFileDescriptor? = null
     private var startedAt: Long = 0L
 
+    // Одноразовые флаги предупреждений об истечении кредов VK: предупредить
+    // стоит один раз за сессию, а не каждую секунду тика. Сбрасываются в
+    // teardown() вместе с самим уведомлением.
+    private var expirySoonNotified: Boolean = false
+    private var expiredNotified: Boolean = false
+
     /**
      * Профиль, с которым последний раз стартовали — нужен для
      * авто-реконнекта при смене сети. Обнуляется при Disconnect.
@@ -262,6 +268,9 @@ class GoloomVpnService : VpnService() {
                     // Капча грузится с настоящего id.vk.ru (не с localhost-
                     // прокси), поэтому success_token видит только WebView —
                     // прокидываем его обратно в Go.
+                    CaptchaController.onDismissed = {
+                        runCatching { goloomClient?.cancelVKCaptcha() }
+                    }
                     CaptchaController.onToken = { token, pageUrl ->
                         log.info(LogSource.APP, "captcha: submitting success_token to Go (${token.length} chars)")
                         c.submitVKCaptchaToken(token, pageUrl)
@@ -501,6 +510,9 @@ class GoloomVpnService : VpnService() {
                 // настоящего id.vk.ru, поэтому success_token видит только
                 // WebView и его надо вернуть в Go. Без этого капча решается,
                 // но solver ждёт токен до таймаута.
+                CaptchaController.onDismissed = {
+                    runCatching { goloomClient?.cancelVKCaptcha() }
+                }
                 CaptchaController.onToken = { token, pageUrl ->
                     log.info(LogSource.APP, "captcha: submitting success_token to Go (${token.length} chars)")
                     c.submitVKCaptchaToken(token, pageUrl)
@@ -619,6 +631,86 @@ class GoloomVpnService : VpnService() {
         val rx = obj.optLong("rx_bytes", 0)
         val durationMs = if (startedAt == 0L) 0L else System.currentTimeMillis() - startedAt
         GoloomController.get(this).publishStats(TunnelStats(tx, rx, durationMs))
+        checkCredentialExpiry(obj.optLong("creds_expire_unix", 0L))
+    }
+
+    /**
+     * VK выдаёт TURN-креды примерно на 8 часов, и pion продлевает каждую
+     * аллокацию ИМИ ЖЕ. Когда они истекают, аллокации умирают и поднять их
+     * заново может только новая авторизация — то есть переподключение. Без
+     * предупреждения это выглядит как внезапно отвалившийся интернет, поэтому
+     * говорим заранее и ещё раз по факту.
+     *
+     * [expireUnix] == 0 означает «неизвестно» (не vk-turn-srtp или старый SDK) —
+     * тогда молчим, а не пугаем.
+     */
+    private fun checkCredentialExpiry(expireUnix: Long) {
+        if (expireUnix <= 0L) return
+        val leftMs = expireUnix * 1000L - System.currentTimeMillis()
+
+        if (leftMs <= 0L) {
+            if (!expiredNotified) {
+                expiredNotified = true
+                postExpiryNotification(
+                    getString(R.string.notif_expired_title),
+                    getString(R.string.notif_expired_body),
+                )
+            }
+            return
+        }
+        if (leftMs <= EXPIRY_WARN_MS && !expirySoonNotified) {
+            expirySoonNotified = true
+            val minutes = ((leftMs + 59_999L) / 60_000L).toInt()
+            postExpiryNotification(
+                getString(R.string.notif_expiry_soon_title),
+                getString(R.string.notif_expiry_soon_body, minutes),
+            )
+        }
+    }
+
+    private fun postExpiryNotification(title: String, body: String) {
+        ensureExpiryChannel()
+        val openAppPI = PendingIntent.getActivity(
+            this,
+            2,
+            Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+            },
+            PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notif = NotificationCompat.Builder(this, EXPIRY_CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setSmallIcon(R.drawable.ic_launcher_eye)
+            .setAutoCancel(true)
+            .setContentIntent(openAppPI)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .build()
+        runCatching {
+            (getSystemService(NOTIFICATION_SERVICE) as NotificationManager)
+                .notify(EXPIRY_NOTIF_ID, notif)
+        }.onFailure {
+            // POST_NOTIFICATIONS может быть не выдан — это не повод ронять тик.
+            LogStore.get(this).warn(LogSource.APP, "expiry notification suppressed: $it")
+        }
+    }
+
+    private fun ensureExpiryChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        if (nm.getNotificationChannel(EXPIRY_CHANNEL_ID) != null) return
+        // Отдельный канал и DEFAULT, а не LOW: постоянное уведомление о статусе
+        // намеренно беззвучное, но это надо заметить — иначе смысла в нём нет.
+        val ch = NotificationChannel(
+            EXPIRY_CHANNEL_ID,
+            getString(R.string.notif_expiry_channel_name),
+            NotificationManager.IMPORTANCE_DEFAULT,
+        ).apply {
+            description = getString(R.string.notif_expiry_channel_desc)
+            setShowBadge(true)
+        }
+        nm.createNotificationChannel(ch)
     }
 
     private fun teardown() {
@@ -635,6 +727,7 @@ class GoloomVpnService : VpnService() {
         // пропадёт. Теперь такой поздний токен даст warning в логе.
         CaptchaController.onToken = null
         CaptchaController.onProfile = null
+        CaptchaController.onDismissed = null
 
         // tunFd закрываем ТОЛЬКО если Go ещё не забрал его (т.е. AdoptTun
         // не дошёл или упал). Иначе будет double-close с UB.
@@ -642,6 +735,12 @@ class GoloomVpnService : VpnService() {
         tunFd = null
 
         startedAt = 0L
+        expirySoonNotified = false
+        expiredNotified = false
+        runCatching {
+            (getSystemService(NOTIFICATION_SERVICE) as NotificationManager)
+                .cancel(EXPIRY_NOTIF_ID)
+        }
         GoloomController.get(this).publishState(ConnectionState.Off)
         GoloomController.get(this).publishStats(TunnelStats())
     }
@@ -718,5 +817,10 @@ class GoloomVpnService : VpnService() {
         private const val NETWORK_REVALIDATE_TRIES = 5
 
         private const val NOTIF_ID = 1001
+        private const val EXPIRY_CHANNEL_ID = "goloom_expiry"
+        private const val EXPIRY_NOTIF_ID = 1002
+
+        /** Сколько времени до истечения кредов начинаем предупреждать. */
+        private const val EXPIRY_WARN_MS = 20 * 60 * 1000L
     }
 }
